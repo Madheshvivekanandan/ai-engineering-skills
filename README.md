@@ -18,6 +18,7 @@ assistant just uses the plain markdown body below it as static instructions.
 | Skill | Use when |
 |---|---|
 | [python-best-practices](skills/python-best-practices/SKILL.md) | Writing, modifying, or reviewing Python: FastAPI routes, SQLAlchemy models, Pydantic schemas, pytest tests, async code, Alembic migrations. |
+| [react-best-practices](skills/react-best-practices/SKILL.md) | Writing, modifying, or reviewing React/TypeScript in a Vite + React 18 SPA: Refine, MUI, react-hook-form, react-router v6 components, hooks, data fetching, forms, and theming. |
 
 ## Usage
 
