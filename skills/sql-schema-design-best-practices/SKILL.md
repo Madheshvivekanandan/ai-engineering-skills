@@ -1,6 +1,6 @@
 ---
 name: sql-schema-design-best-practices
-description: Stack-agnostic standard for designing and evolving relational database schemas. Load BEFORE writing or reviewing DDL, migration files, or index definitions (CREATE TABLE / ALTER TABLE / CREATE INDEX; Flyway, Liquibase, Alembic, Prisma, Knex, golang-migrate, Rails or Django migrations), and when picking types for money or timestamps, diagnosing a slow query with EXPLAIN, planning a zero-downtime schema change or a backfill, or designing multi-tenant row isolation. ORM-agnostic: applies equally to raw SQL and to Node, Go, Java, .NET, or Python backends.
+description: Stack-agnostic standard for designing and evolving relational database schemas. Load BEFORE writing or reviewing DDL, migration files, or index definitions (CREATE TABLE / ALTER TABLE / CREATE INDEX; Flyway, Liquibase, Alembic, Prisma, Knex, golang-migrate, Rails or Django migrations), and when picking types for money or timestamps, diagnosing a slow query with EXPLAIN, planning a zero-downtime schema change or a backfill, or designing multi-tenant row isolation. ORM-agnostic — applies equally to raw SQL and to Node, Go, Java, .NET, or Python backends.
 ---
 
 # SQL Schema Design Best Practices
@@ -315,6 +315,9 @@ WHERE c.contype = 'f'
                     AND i.indisvalid AND i.indpred IS NULL);
 
 -- Never-used indexes, largest first
+-- this also lists primary-key and unique-constraint indexes, which cannot be dropped
+-- without dropping the constraint (see section 7), and on an idle or freshly restored
+-- database every index has zero scans -- read it against production statistics only
 SELECT relname, indexrelname, idx_scan,
        pg_size_pretty(pg_relation_size(indexrelid)) AS size
 FROM pg_stat_user_indexes
