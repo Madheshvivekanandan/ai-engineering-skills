@@ -20,6 +20,15 @@ assistant just uses the plain markdown body below it as static instructions.
 | [python-best-practices](skills/python-best-practices/SKILL.md) | Writing, modifying, or reviewing Python: FastAPI routes, SQLAlchemy models, Pydantic schemas, pytest tests, async code, Alembic migrations. |
 | [react-best-practices](skills/react-best-practices/SKILL.md) | Writing, modifying, or reviewing React/TypeScript in a Vite + React 18 SPA: Refine, MUI, react-hook-form, react-router v6 components, hooks, data fetching, forms, and theming. |
 | [n8n-workflow-best-practices](skills/n8n-workflow-best-practices/SKILL.md) | Creating or editing n8n workflows: node/workflow naming, sub-workflow modularity, error handling, credential security, git version control & CI/CD, and testing with pinned data. |
+| [llm-application-best-practices](skills/llm-application-best-practices/SKILL.md) | Building or reviewing anything that calls an LLM: prompt and context design, tool/function-calling schemas, structured output, RAG grounding and citations, evals, cost and latency budgets, prompt-injection defence, PII handling, and observability. |
+| [sql-schema-design-best-practices](skills/sql-schema-design-best-practices/SKILL.md) | Designing or evolving a relational schema: DDL, migrations, keys and constraints, money/timestamp types, indexing and EXPLAIN, zero-downtime changes, backfills, multi-tenancy, and partitioning. |
+| [api-contract-design-best-practices](skills/api-contract-design-best-practices/SKILL.md) | Designing or changing HTTP/REST API contracts: resource modeling, method and status-code semantics, problem+json errors, idempotency keys, pagination, versioning and breaking changes, ETags, rate limits, webhooks, and OpenAPI with CI gates. |
+| [docker-deployment-best-practices](skills/docker-deployment-best-practices/SKILL.md) | Writing or reviewing a Dockerfile, .dockerignore, Compose file, Kubernetes manifest, or a CI job that builds, scans, tags, deploys, or rolls back a container image. |
+| [git-commit-pr-workflow](skills/git-commit-pr-workflow/SKILL.md) | Committing, branching, or opening a pull request: atomic commits, Conventional Commits, trunk-based branching, PR scope and description, review etiquette, rebase vs merge, semantic versioning, tags, changelogs, and pre-commit hooks. |
+
+Every source consulted while writing these skills is recorded in
+[SOURCES.md](SOURCES.md), with a provenance tier and a verification date per
+entry, so you can see what each skill actually rests on.
 
 ## Usage
 

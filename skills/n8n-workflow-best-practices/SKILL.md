@@ -169,9 +169,13 @@ Error handling is not optional for anything that runs unattended.
 - **Test the production trigger, not the test one.** A webhook's test URL and
   production URL are different endpoints with potentially different behavior —
   verify against production before calling a webhook workflow done.
-- **Unpin before shipping** anything that must reflect live data — pinned data
-  silently freezes a node forever, including in production, until manually
-  removed.
+- **Unpin before you trust a manual run again.** Pinned data persists
+  indefinitely until you explicitly unpin it, so a stale pin makes every later
+  manual execution quietly disagree with reality. It does **not** leak into
+  production — n8n states that data pinning "isn't available for production
+  workflow executions." The failure mode is a false green in the editor, not a
+  frozen production node, so treat a pin as something you clear before believing
+  a test, not something you clear before deploying.
 
 ## 9. Monitoring & Observability
 
@@ -241,7 +245,8 @@ convention followed where practical?
 
 **Testing** — failure paths (bad input, expired credential, timeout) tested, not
 just the happy path? Pinned data used for repeatable/side-effect-free test runs,
-and unpinned before shipping? Production trigger URL verified?
+and stale pins cleared so manual runs still reflect reality? Production trigger
+URL verified against the production endpoint, not the test one?
 
 **Monitoring** — new workflow's expected execution time/error rate known?
 Sensitive data redacted from logs/alerts?
@@ -253,9 +258,9 @@ production guidance. Primary sources used while writing it:
 
 - [n8n Docs — Error Trigger node](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.errortrigger) — official Error Trigger behavior and setup.
 - [n8n Blog — Creating error workflows in n8n](https://blog.n8n.io/creating-error-workflows-in-n8n/) — official guidance on wiring an Error Workflow per production workflow.
-- [n8n Docs — Data pinning](https://docs.n8n.io/data/data-pinning/) and [Pin and mock data](https://docs.n8n.io/build/work-with-data/pin-and-mock-data) — official pinned-data testing workflow.
-- [n8n Docs — Manual, partial, and production executions](https://docs.n8n.io/workflows/executions/manual-partial-and-production-executions/) — production vs. test trigger behavior.
-- [n8n Docs — Credentials environment variables](https://docs.n8n.io/hosting/configuration/environment-variables/credentials/) — encryption key and credential env-var configuration.
+- [n8n Docs — Pin and mock data](https://docs.n8n.io/build/work-with-data/pin-and-mock-data) — official pinned-data testing workflow; the source for pinning being a development-only feature that "isn't available for production workflow executions" (checked 2026-08-20).
+- [n8n Docs — Webhook node, workflow development](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.webhook/workflow-development) — test and production webhook URLs are separate endpoints; the test URL stays active for 120 seconds and production traffic is not visible in the editor (checked 2026-08-20).
+- [n8n Docs — Set a custom encryption key](https://docs.n8n.io/deploy/host-n8n/configure-n8n/basic-configuration/configuration-examples/set-a-custom-encryption-key) — the source for n8n creating "a random encryption key automatically on the first launch" and saving it in `~/.n8n` (checked 2026-08-20).
 - [n8n Community — Best practices for structuring n8n workflows for scale and long-term maintainability](https://community.n8n.io/t/best-practices-for-structuring-n8n-workflows-for-scale-and-long-term-maintainability/248671) — sub-workflow modularity, naming-as-story, access control on shared workflows.
 - [HatchWorks — n8n Best Practices Checklist for Production](https://hatchworks.com/blog/ai-agents/n8n-best-practices/) — "one workflow, one job," credential hygiene, error-context notifications, HTTP-status-to-action mapping, testing failure paths, monitoring/observability.
 - [n8nautomation.cloud — n8n Sub-Workflows: A Complete Step-by-Step Guide (2026)](https://n8nautomation.cloud/blog/n8n-sub-workflows-complete-guide-2026) — sub-workflow size limits, single-responsibility guidance, reuse patterns.
