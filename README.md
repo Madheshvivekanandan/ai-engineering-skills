@@ -26,9 +26,12 @@ assistant just uses the plain markdown body below it as static instructions.
 | [docker-deployment-best-practices](skills/docker-deployment-best-practices/SKILL.md) | Writing or reviewing a Dockerfile, .dockerignore, Compose file, Kubernetes manifest, or a CI job that builds, scans, tags, deploys, or rolls back a container image. |
 | [git-commit-pr-workflow](skills/git-commit-pr-workflow/SKILL.md) | Committing, branching, or opening a pull request: atomic commits, Conventional Commits, trunk-based branching, PR scope and description, review etiquette, rebase vs merge, semantic versioning, tags, changelogs, and pre-commit hooks. |
 
-Every source consulted while writing these skills is recorded in
-[SOURCES.md](SOURCES.md), with a provenance tier and a verification date per
-entry, so you can see what each skill actually rests on.
+Every source consulted while writing these skills is recorded: per skill in
+`skills/<name>/references/sources.md`, and repo-wide — with provenance tiers and
+known gaps — in [SOURCES.md](SOURCES.md). Every entry carries a verification
+date, so you can see what each skill actually rests on. Those files sit outside
+`SKILL.md` deliberately: provenance is for a human deciding whether to trust a
+skill, so it shouldn't spend tokens every time an assistant loads one.
 
 ## Usage
 
@@ -67,9 +70,11 @@ triggered — which is fine for a single, focused skill like this one.
 ```
 skills/
   <skill-name>/
-    SKILL.md          # required: frontmatter + guidance
-    references/        # optional: supporting docs the skill can point to
-    scripts/            # optional: helper scripts the skill can invoke
+    SKILL.md              # required: frontmatter + guidance
+    references/
+      sources.md          # provenance: every source, with verification dates
+      ...                 # optional: other docs the skill can point to
+    scripts/              # optional: helper scripts the skill can invoke
 ```
 
 ## Adding a new skill
