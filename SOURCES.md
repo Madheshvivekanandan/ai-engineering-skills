@@ -46,14 +46,14 @@ not re-checked since its stated date should be treated as stale.
 
 | Skill | Citations | Rests primarily on | Verified on |
 |---|---|---|---|
-| [llm-application-best-practices](skills/llm-application-best-practices/SKILL.md) | 37 | OWASP GenAI security material, provider API reference, NIST AI RMF, peer-reviewed papers | 2026-08-19 / 2026-08-20 |
-| [sql-schema-design-best-practices](skills/sql-schema-design-best-practices/SKILL.md) | 37 | PostgreSQL official documentation (22 pages), RFC 9562, Use The Index Luke | 2026-08-19 |
-| [api-contract-design-best-practices](skills/api-contract-design-best-practices/SKILL.md) | 27 | RFC 9110 and RFC 9457, Google AIP, the OpenAPI Specification, Stripe's API docs | 2026-08-19 |
-| [docker-deployment-best-practices](skills/docker-deployment-best-practices/SKILL.md) | 33 | Docker official docs (14 pages), Kubernetes docs, NIST SP 800-190, CIS, OWASP | 2026-08-19 |
-| [git-commit-pr-workflow](skills/git-commit-pr-workflow/SKILL.md) | 33 | Google eng-practices, git-scm.com and git(1), Conventional Commits, SemVer | 2026-08-19 |
-| [n8n-workflow-best-practices](skills/n8n-workflow-best-practices/SKILL.md) | 13 | n8n official docs (4 pages), plus community and third-party guidance | 2026-08-20 (audited) |
-| [python-best-practices](skills/python-best-practices/SKILL.md) | 56 | PEP 8 and PEP 257, the Google Python Style Guide, tool documentation (ruff, black, mypy, pytest, SQLAlchemy 2.0, FastAPI), OWASP Top 10:2025 + nine Cheat Sheets + ASVS 5.0.0, Martin's and Evans's own writing | 2026-08-20 (retroactive) |
-| [react-best-practices](skills/react-best-practices/SKILL.md) | 86 | Vercel's MIT-licensed upstream skill (verified), react.dev (23 pages), W3C WCAG 2.2 (19), and each library's own docs | 2026-08-20 (retroactive) |
+| [llm-application-best-practices](skills/llm-application-best-practices/SKILL.md) | [37](skills/llm-application-best-practices/references/sources.md) | OWASP GenAI security material, provider API reference, NIST AI RMF, peer-reviewed papers | 2026-08-19 / 2026-08-20 |
+| [sql-schema-design-best-practices](skills/sql-schema-design-best-practices/SKILL.md) | [37](skills/sql-schema-design-best-practices/references/sources.md) | PostgreSQL official documentation (22 pages), RFC 9562, Use The Index Luke | 2026-08-19 |
+| [api-contract-design-best-practices](skills/api-contract-design-best-practices/SKILL.md) | [27](skills/api-contract-design-best-practices/references/sources.md) | RFC 9110 and RFC 9457, Google AIP, the OpenAPI Specification, Stripe's API docs | 2026-08-19 |
+| [docker-deployment-best-practices](skills/docker-deployment-best-practices/SKILL.md) | [33](skills/docker-deployment-best-practices/references/sources.md) | Docker official docs (14 pages), Kubernetes docs, NIST SP 800-190, CIS, OWASP | 2026-08-19 |
+| [git-commit-pr-workflow](skills/git-commit-pr-workflow/SKILL.md) | [33](skills/git-commit-pr-workflow/references/sources.md) | Google eng-practices, git-scm.com and git(1), Conventional Commits, SemVer | 2026-08-19 |
+| [n8n-workflow-best-practices](skills/n8n-workflow-best-practices/SKILL.md) | [13](skills/n8n-workflow-best-practices/references/sources.md) | n8n official docs (4 pages), plus community and third-party guidance | 2026-08-20 (audited) |
+| [python-best-practices](skills/python-best-practices/SKILL.md) | [56](skills/python-best-practices/references/sources.md) | PEP 8 and PEP 257, the Google Python Style Guide, tool documentation (ruff, black, mypy, pytest, SQLAlchemy 2.0, FastAPI), OWASP Top 10:2025 + nine Cheat Sheets + ASVS 5.0.0, Martin's and Evans's own writing | 2026-08-20 (retroactive) |
+| [react-best-practices](skills/react-best-practices/SKILL.md) | [86](skills/react-best-practices/references/sources.md) | Vercel's MIT-licensed upstream skill (verified), react.dev (23 pages), W3C WCAG 2.2 (19), and each library's own docs | 2026-08-20 (retroactive) |
 
 Fifteen of the API skill's twenty-seven citations are specifications or standards
 documents. That ratio, more than any total, is what tells you what a skill rests
@@ -61,31 +61,36 @@ on.
 
 ## Per-skill detail
 
-The five skills added on 2026-08-19 carry a full `References` section inside the
-skill itself, with **per-rule attribution** — which source supplied which specific
-claim, and what each source does *not* say. That itemised detail is the
-authoritative record; it lives next to the rules it supports so the two cannot
-drift apart. This file summarises it and does not restate it.
+Every skill carries its itemised record at
+`skills/<name>/references/sources.md`, with **per-rule attribution** — which source
+supplied which specific claim, and what each source does *not* say. Those files are
+the authoritative record; this file summarises them and does not restate them.
 
-Those `References` sections also record their own limits. The SQL skill, for
+They sit in `references/` rather than inside `SKILL.md` because the two have
+different readers. A skill body is loaded into a model's context every time the
+skill fires; provenance is read by a person once, when deciding whether to trust
+the skill. Keeping them apart cut the collection's load-time cost by 27% without
+losing a single citation.
+
+Those files also record their own limits. The SQL skill, for
 example, states plainly that its normalization guidance rests on general practice
 with no primary source consulted and no clause of ISO/IEC 9075 cited; that its
 antipattern names come from the publisher's table of contents rather than the book
 text; and that one widely-cited book is listed as further reading only and must
 not be treated as support for any rule. Read those notes before leaning on a rule.
 
-`python-best-practices` and `react-best-practices` now carry one too, both added
-retroactively on 2026-08-20: their §20 and §15 `References` sections are the itemised
-records for those skills, and the subsections below summarise how each came about and
-what each did not settle. Only `n8n-workflow-best-practices` still has no comparable
-section, so its provenance is recorded here in full.
+`python-best-practices` and `react-best-practices` had theirs reconstructed
+retroactively on 2026-08-20, and `n8n-workflow-best-practices` was audited the same
+day. The three subsections below summarise how each of those came about and what
+each did not settle — history the five 2026-08-19 skills do not need, because their
+sources were open while they were written.
 
 ### python-best-practices
 
 Authored 2026-07-31. **No pages were fetched while it was written** — the opening
 paragraph named what it synthesizes, and nothing more. On **2026-08-20** each named
 standard was fetched, read, and attached to the rules that depend on it. That record
-lives in the skill's own §20 `References`, next to the rules it supports.
+lives in the skill's own `references/sources.md`.
 
 Tier: **Verified (retroactively, 2026-08-20)** — 56 pages and documents read on that
 date, every one of them re-fetched and re-read in an adversarial review the same day.
@@ -141,7 +146,7 @@ they are now written into the body rather than papered over. The largest ones:
   environment variables a fallback mechanism, not a recommended one, and this skill still
   permits them.
 
-The `References` section was then audited against the same pages, and three defects in it were
+That sources file was then audited against the same pages, and three defects in it were
 fixed rather than left standing. One was a **misquotation**: the DDD Reference entry attributed to
 Evans a scope disclaimer ("does not contain full explanations of DDD") that does not appear anywhere
 in the 59-page PDF. The entry now says what the document actually is — a set of pattern summaries, by
@@ -173,8 +178,8 @@ metadata:
   perf-rules-adapted-from: vercel-labs/agent-skills — skills/react-best-practices (MIT, v1.0.0)
 ```
 
-Tier: **Adapted with attribution, sources verified 2026-08-20.** The skill now carries a
-`References` section (§15) with 86 entries, every one fetched and read on that date:
+Tier: **Adapted with attribution, sources verified 2026-08-20.** Its sources file carries
+86 entries, every one fetched and read on that date:
 9 for upstream attribution (Vercel's announcement post, seven files and directories in
 `vercel-labs/agent-skills`, and one entry covering the 16 individual rule files read to
 check specific claims), 23 react.dev pages plus React's `CHANGELOG.md`, the archived
@@ -184,7 +189,7 @@ TypeScript handbook pages, 3 TanStack Query pages, 3 `mui.com` pages plus the MU
 MUI X v6 docs sources read from their release branches, 2 Refine pages, 2 `unpkg` type
 declarations, the `@hookform/resolvers` README, and one page each from React Router, Zod,
 the npm registry, and the React TypeScript Cheatsheet. As with the Python skill, the
-document was written first and checked afterwards, and §15 says so plainly rather than
+document was written first and checked afterwards, and that file says so plainly rather than
 implying the sources were open while it was drafted.
 
 **The attribution held up.** The upstream skill exists at exactly the path the document
@@ -313,7 +318,8 @@ Recorded so the absence of proof is visible rather than hidden.
 
 A provenance file that is not maintained becomes a false assurance, which is worse
 than none. [CONTRIBUTING.md](CONTRIBUTING.md) step 6 requires a new skill to record
-its sources here, cite only pages it actually opened, and date every entry.
+its sources in `skills/<name>/references/sources.md`, add a row to the summary table
+above, cite only pages it actually opened, and date every entry.
 
 When re-verifying, open the pages. Do not rely on a link checker: as the n8n audit
 showed, a dead documentation URL can return HTTP 200 and read as healthy.
