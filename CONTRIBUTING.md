@@ -26,7 +26,23 @@
    `skills/<name>/references/` and link to it from `SKILL.md`; keep
    executable helpers under `skills/<name>/scripts/`.
 5. Add a row to the table in [README.md](README.md).
-6. Run the lint check locally before opening a PR:
+6. Record what you actually read in [SOURCES.md](SOURCES.md), under a heading for
+   your skill. Two rules make that file worth having:
+
+   - **Cite only what you opened.** If you found a page in search results but
+     never read it, it is not a source. A short list of pages you actually read
+     beats a long list you assembled from search titles.
+   - **Give every entry a verification date**, and check the page still says what
+     you claim. Vendor documentation gets reorganised — and some doc sites serve
+     "page not found" with an HTTP 200, so a link checker will call a dead URL
+     healthy. Open it.
+
+   Group entries by how much authority they carry (specifications and RFCs first,
+   then official vendor docs, then industry guidelines, then books), and note
+   anything you could not verify rather than quietly dropping it. A reader should
+   be able to tell the difference between a rule backed by an RFC and a rule
+   backed by a blog post.
+7. Run the lint check locally before opening a PR:
 
    ```bash
    ./scripts/lint-skills.sh
