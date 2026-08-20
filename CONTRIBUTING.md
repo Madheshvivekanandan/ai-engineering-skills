@@ -26,8 +26,23 @@
    `skills/<name>/references/` and link to it from `SKILL.md`; keep
    executable helpers under `skills/<name>/scripts/`.
 5. Add a row to the table in [README.md](README.md).
-6. Record what you actually read in [SOURCES.md](SOURCES.md), under a heading for
-   your skill. Two rules make that file worth having:
+6. Record what you actually read in
+   `skills/<kebab-case-name>/references/sources.md`, and add a row for your skill
+   to the summary table in [SOURCES.md](SOURCES.md).
+
+   Keep provenance out of `SKILL.md` itself. The body of a skill is loaded into a
+   model's context on every invocation; sources are read by a human once, when
+   deciding whether to trust the skill. Two audiences, two frequencies — so a
+   pointer is all `SKILL.md` needs:
+
+   ```markdown
+   ## References
+
+   Sources for every rule above — what each one confirms and the date it was last
+   checked — are in [references/sources.md](references/sources.md).
+   ```
+
+   Two rules make the sources file worth having:
 
    - **Cite only what you opened.** If you found a page in search results but
      never read it, it is not a source. A short list of pages you actually read
