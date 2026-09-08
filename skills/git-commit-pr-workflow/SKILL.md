@@ -5,12 +5,11 @@ description: Standard for making commits and opening pull requests. Load BEFORE 
 
 # Git Commit and Pull Request Workflow
 
-Opinionated synthesis of Pro Git's commit guidelines, Git's own `Documentation/SubmittingPatches`,
-Conventional Commits 1.0.0, Semantic Versioning 2.0.0, Keep a Changelog 1.1.0, Google's
-Engineering Practices for code review, DORA's trunk-based-development capability, and GitHub's
-pull request documentation. These are the git rules other skills should defer to rather than
-restate: point a language skill's git section at this document instead of duplicating it. When this
-document conflicts with an existing in-repo convention, follow the repo and say so.
+Opinionated synthesis of Pro Git, Git's own contributor documentation, Conventional Commits 1.0.0,
+Semantic Versioning 2.0.0, Keep a Changelog 1.1.0, Google's Engineering Practices, DORA, and GitHub's
+documentation. This document is canonical for git workflow; other skills in this suite carry at most
+a compressed standalone summary of these rules. When this document conflicts with an existing
+in-repo convention, follow the repo and say so.
 
 ## 1. Philosophy
 
@@ -41,7 +40,7 @@ The rules other skills defer to. They apply to every language and repo.
 | Rule | Do | Do not |
 |---|---|---|
 | Scope | One issue, one commit | Five unrelated fixes in one commit |
-| Splitting | `git add --patch` to separate unrelated hunks in the same file (interactive: humans only — an agent with no TTY stages whole files instead, see section 14 rule 8) | Commit the whole working tree and call it indivisible |
+| Splitting | `git add --patch` to separate unrelated hunks in the same file (interactive: humans only — an agent with no TTY stages whole files instead, see section 14 rule 6) | Commit the whole working tree and call it indivisible |
 | Buildability | Every commit builds and its tests pass | "Broken midway, fixed in the next commit" |
 | Whitespace | `git diff --check` clean before every commit | Trailing-whitespace noise inflating the diff |
 | Tests | Test ships in the same commit as the code it covers | Tests bolted on in a follow-up |
@@ -68,18 +67,12 @@ Refs: #482
 |---|---|---|
 | Mood | `Fix parser dropping trailing spaces` | `Fixed…`, `Fixes…`, `Fixing…`, `[This patch] makes…` |
 | Subject length | 50 chars or fewer as a target; the enforced ceiling is your linter's `header-max-length` (100 in `config-conventional`) | A 140-char subject truncated in every log view |
-| Terminal punctuation | `Add retry to webhook sender` | `Add retry to webhook sender.` |
-| Separator | Exactly one blank line between subject and body | Subject and body run together |
 | Content | States the problem and the reason | Restates the diff line by line |
 | Substance | `Drop FizzBuzz RPC; no callers since 3.2` | `Fix bug`, `Fix build`, `WIP`, `updates`, `Add patch`, `Moving code from A to B` |
 
-- Git treats everything up to the first blank line as the commit **title** and reuses it in
-  `git log --oneline`, `format-patch`, and every UI; omitting that blank line makes tooling misparse
-  the whole message as a title. The 50-character summary is Git's own guidance and explicitly soft —
-  git-commit(1) says "Though not required, it's a good idea to begin the commit message with a single
-  short (no more than 50 characters) line summarizing the change"; the 72-column body wrap is the Pro
-  Git template convention.
-  Neither is enforced by Git — the hard ceiling comes from your linter (section 5).
+- Exactly one blank line between subject and body — Git treats everything up to the first blank line
+  as the **title**, and omitting the blank line makes tooling misparse the whole message as a title.
+  Git itself enforces no lengths; the hard ceiling comes from your linter (section 5).
 - Never claim in a message something you did not verify. "Fixes the flake" and "improves throughput
   20%" are factual assertions that outlive you.
 
@@ -104,12 +97,9 @@ present, is a noun in parentheses.
 | `chore` | Housekeeping with no src/test impact | none |
 | `revert` | Reverting a previous commit | none per spec; PATCH under semantic-release only when the commit also carries a `This reverts commit <sha>.` body |
 
-**Attribution matters.** The 1.0.0 spec normatively requires only `feat` and `fix`, sets no character
-limits, and binds only those two to a version bump; the 11-type list above is
-`@commitlint/config-conventional`'s, not "the Conventional Commits list". Pick one list, encode it in
-your linter, and read your release tool's own rules — see References for Angular's narrower 8 types and
-semantic-release's defaults. Labelling a dependency bump or a refactor as `feat` publishes a false
-minor release either way.
+**Attribution matters.** The 1.0.0 spec normatively requires only `feat` and `fix`; the 11-type list
+above is `@commitlint/config-conventional`'s. Pick one list, encode it in your linter, and read your
+release tool's own rules — labelling a dependency bump or a refactor as `feat` publishes a false minor release.
 
 - Breaking changes: `!` immediately before the colon, or an uppercase `BREAKING CHANGE: <desc>`
   footer, or both. Never as prose in the body — release tooling cannot see it, and the break ships
@@ -246,23 +236,18 @@ Fixes #1183
 | `FYI:` | Information for next time, no action now |
 | *(unprefixed)* | Blocking; must be addressed |
 
-**Default: the prefixes above.** The alternative is Conventional Comments' `<label> [decorations]:
-<subject>` form — primary labels `praise`, `nitpick`, `suggestion`, `issue`, `todo`, `question`,
-`thought`, `chore`, `note`, with `(non-blocking)`, `(blocking)`, `(if-minor)` decorations. If your team
-uses it, label *every* comment and drop the unprefixed-means-blocking rule: there, blocking-ness is the
-`(blocking)` decoration, not the absence of a prefix. Never mix the two schemes in one repo — a
-reviewer who does leaves blocking comments that read as optional.
+**Default: the prefixes above.** The alternative is Conventional Comments (`<label> [decorations]: <subject>`);
+if your team uses it, label *every* comment — blocking-ness is the `(blocking)` decoration, not the
+absence of a prefix — and never mix the two schemes in one repo.
 
 - **Comment on the code, never on the developer**, and always give the reasoning. An unexplained
-  request is an arbitrary gate that teaches nothing. Call out genuinely good work too.
-- Do not interrupt focused work for a review; do it at your next break point, and within one
-  business day at the latest. Use "LGTM with comments" when you trust the author to finish the rest.
+  request is an arbitrary gate that teaches nothing.
+- Use "LGTM with comments" when you trust the author to finish the rest.
 
 **As author:**
 
 - **If a reviewer misread your code, change the code or add a code comment.** Explanations that live
   only in the review thread do not help the next reader, who will misread it the same way.
-- Never reply in anger. Step away, then respond to the technical content.
 - Resolve disagreement on technical facts and data, not preference. The style guide is the authority
   on style; on a genuine wash the author's preference stands; a deadlock goes to a lead rather than
   leaving the PR to sit.
@@ -281,20 +266,12 @@ hand and produces duplicate commits with identical author, date, and message.
 | `push --force` | n/a | Never — use `--force-with-lease` | Never |
 | `revert` | Yes | Yes | Yes — this is the correct tool here |
 
-- `--force-with-lease` updates the remote only if its ref still matches the value you last observed,
-  so it refuses to delete a collaborator's pushed commit; bare `--force` does not check. Add
-  `--force-if-includes` for a stronger guarantee; anything running `git fetch` in the background (an
-  IDE, a shell prompt) weakens the lease. It is a **`git push`** option only — there is no
-  `git rebase --force-with-lease`.
-- Fold review fixups into their target commit: `git commit --fixup=<commit>` (or `--squash=`) then
-  `git rebase -i --autosquash origin/main` — or, with no TTY,
-  `GIT_SEQUENCE_EDITOR=: git rebase --autosquash origin/main` (section 14 rule 8). That bare
-  non-interactive form **requires Git 2.44 or newer**, whose release notes announce that
-  "`git rebase --autosquash` is now enabled for non-interactive rebase"; before 2.44 the flag only
-  rewrote `rebase -i`'s todo list, so without `-i` it was silently ignored and every `fixup!` survived
-  to ship. Check `git --version` first, and on older Git use
-  `GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash origin/main`, which folds fixups on every version.
-  `--autosquash` is incompatible with the apply backend either way. Never append "address review
+- `--force-with-lease` updates the remote only if its ref still matches the value you last observed
+  (bare `--force` does not check); add `--force-if-includes` for a stronger guarantee — background
+  `git fetch` (an IDE, a shell prompt) weakens the lease. It is a **`git push`** option only.
+- Fold review fixups into their target commit: `git commit --fixup=<commit>` (or `--squash=`) then an
+  autosquash rebase — the non-interactive form and its Git ≥ 2.44 requirement are in the section 12
+  gate block. `--autosquash` is incompatible with the apply backend. Never append "address review
   comments" commits; they make `bisect` and `revert` useless later.
 - **Resolving a conflict is an edit, not a merge decision.** Never take `--ours`/`--theirs` wholesale;
   it silently discards one side's work. Re-run the tests before `git rebase --continue`. A conflict
@@ -303,7 +280,7 @@ hand and produces duplicate commits with identical author, date, and message.
 - Clean up before you push, or while the pushed branch is still yours alone. Once anyone else may
   have based work on it, the only safe correction is a new commit. A human should run
   `git config pull.rebase true` and `git config rebase.autoSquash true` once during onboarding so this
-  is the default; an agent must not change git config (section 14 rule 21).
+  is the default; an agent must not change git config (section 14 rule 15).
 
 **Merge strategy — pick one per repository and encode it in settings.** Mixing them ad hoc makes
 history unreadable and `git log` filters unreliable.
@@ -320,23 +297,15 @@ history unreadable and `git log` filters unreliable.
 
 ## 11. Releases: Versions, Tags, Changelogs
 
-Follow **Semantic Versioning 2.0.0**: `MAJOR.MINOR.PATCH`.
+Follow **Semantic Versioning 2.0.0**: `MAJOR.MINOR.PATCH`. The spec's commit-derived mapping: `!`
+marker or `BREAKING CHANGE` footer → MAJOR, any `feat` in the range → MINOR, any `fix` → PATCH — but
+your release tool may bump for other types too (section 5), so read its rules rather than
+hand-computing the version.
 
-| Bump | For | Derived from |
-|---|---|---|
-| MAJOR | Incompatible API change | `!` marker or `BREAKING CHANGE` footer |
-| MINOR | Backward-compatible functionality | any `feat` in the range |
-| PATCH | Backward-compatible bug fix | any `fix` in the range |
-
-- The `Derived from` column is the **spec's** mapping. Your release tool may bump PATCH for further
-  types (section 5), so read its rules rather than hand-computing the version from this table.
 - **A released version's contents must never be modified** — any change requires a new version.
   Retagging a shipped release breaks caches, lockfiles, and mirrors.
-- `0.y.z` is initial development: anything may change at any time and nothing is stable. `1.0.0` is
-  where you declare the public API.
-- Pre-releases are `1.0.0-alpha.1` and have **lower** precedence than `1.0.0`. Build metadata after
-  `+` is **ignored for precedence** — never encode a meaningful difference there, or two versions
-  compare as equal.
+- Never encode a meaningful difference in build metadata after `+` — it is ignored for precedence,
+  so two such versions compare as equal.
 
 **Tags:**
 
@@ -421,45 +390,33 @@ git describe --tags --exact-match HEAD        # the release commit is actually t
 
 ## 13. Emergencies
 
-| Is an emergency | Is not an emergency |
-|---|---|
-| A blocked major launch | A soft deadline |
-| A significant user-facing production bug | Wanting the change in today |
-| An urgent legal issue | The reviewer being in another timezone |
-| A critical security hole | Friday afternoon, or manager pressure |
-| A rollback that stops a live production outage | Rolling back a change that only breaks tests or the build |
-
-An emergency change must be **minimal and scoped strictly to resolving the crisis**, and must be
-reviewed thoroughly again afterwards. The fast path exists because the change is small enough to verify
-quickly; spending it on soft deadlines means the discount is gone when it matters.
+A genuine emergency — a live production outage, a critical security hole, an urgent legal issue, a
+blocked major launch — may take a fast path: a change **minimal and scoped strictly to resolving the
+crisis**, reviewed thoroughly again afterwards. A soft deadline, a reviewer in another timezone,
+manager pressure, or a rollback that only fixes tests or the build is not an emergency. Gates still
+bind (section 14 rule 7).
 
 ## 14. AI Agent Rules
 
 When operating on a repository, the agent **must**:
 
-1. **Never run `git commit` unless the user asked for a commit in this session.** The default deliverable is working code plus a proposed message. "The work looks finished" is not consent.
-2. **Never run `git push` unless the user asked to push.** Committing is not permission to publish.
-3. **Never `git tag`, create a release, or open a PR unless asked.** Each is a separate authorisation.
-4. **Never merge, approve, or close a pull request, and never merge into the default branch, unless the user asked for that specific action.** No `gh pr merge` — and never `--admin`, which bypasses branch protection — no `gh pr review --approve`, no `git merge` into trunk, no `gh pr close`. Approving your own or another agent's work is not review. Leaving a review comment on someone else's PR is a separate authorisation again: draft the comment for the user unless you were asked to post it.
-5. **Do not commit directly to the default branch unless that is demonstrably the repo's convention.** Resolve the default branch with `git symbolic-ref --quiet --short refs/remotes/origin/HEAD` and strip the `origin/` prefix; if it is unset, run `git remote set-head origin -a` or ask. Get the current branch separately with `git branch --show-current` (empty output means detached HEAD — stop and ask), then compare the two bare names. If they match, read `git log --oneline -20`: history made of PR merges means create and switch to a topic branch first; history of direct commits to trunk means say so and confirm before committing.
-6. **Never amend, rebase, `reset`, force-push, or otherwise rewrite any commit that has been pushed or shared** — and never rebase a branch you did not create in this session — without an explicit instruction naming that operation. Published history is not yours to edit. To undo a shared commit, use `git revert`.
-7. **When force-pushing your own session branch after an instruction to do so, use `--force-with-lease`.** Never bare `--force`.
-8. **Never use interactive git flags in a non-interactive session** — `rebase -i` without a no-op sequence editor, `add -i`, `add -p`, `commit` without `-m`, or anything that opens an editor or a pager. Where the workflow wants an interactive step, either avoid it (stage whole files rather than hunks), run it non-interactively by forcing a no-op sequence editor (`GIT_SEQUENCE_EDITOR=: git rebase --autosquash <trunk>`, or `GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash <trunk>` on Git older than 2.44 — section 10), or hand that step to the user.
-9. **Never bypass a hook or a check to force something green.** No `--no-verify`, no `SKIP=`, no `[skip ci]`, no disabling a rule, no marking a test skipped to get a pass. If a gate fails, report the failure and the actual output, and stop.
-10. **Report what hooks and CI actually did.** Never state that tests pass, lint is clean, or a build is green unless you ran it in this session and read the output. Quote the real result.
-11. **Stage deliberately** (section 2 rule 6) — `git add -A` and `git add .` sweep in unrelated local edits, build artifacts, and untracked credential files.
-12. **Read `git status` and `git diff --staged` before every commit.** Blind-adding is how secrets ship.
-13. **Never commit or push secrets, tokens, `.env` files, private keys, credentials, or large binaries.** If the staged diff contains anything that looks like one, stop and ask. A pushed secret is public, and removing it means rewriting published history — the hardest operation to undo.
-14. **Never include unrelated formatting churn.** No reformatting untouched files, no drive-by renames, no reordering imports outside the change. Real defects hide behind mechanical noise.
-15. **Follow the canonical rules in section 2** (one logical change, imperative subject within `header-max-length`, blank line, body stating the problem and the reason), and match the repo's existing message style (check `git log --oneline -20` first) over this document's.
-16. **Describe only changes you actually made**, verified against the diff. No claimed benchmarks, no "fixes #N" for an issue you did not read, no invented rationale.
-17. **Never add `Signed-off-by` for a human, and never use `git commit -s`/`--signoff` on their behalf.** That trailer is a legal certification under the Developer's Certificate of Origin that the signer wrote the change or has the right to submit it. Only the named person can assert it.
-18. **Never set or override commit authorship.** No `--author`, no `GIT_AUTHOR_NAME`/`GIT_AUTHOR_EMAIL`/`GIT_COMMITTER_*` overrides, no `--date`. Commit under whatever identity the clone is already configured with; if it is wrong or unset, stop and ask.
-19. **Disclose machine authorship where the project's policy permits it** — a `Co-authored-by: Name <email@example.com>` trailer after a blank line — and **check that policy first.** Some projects reject AI-generated contributions outright; Git itself states it will "reject anything that looks AI generated … or that senders don't understand or cannot explain."
-20. **Before deleting or overwriting anything, look at the target first.** Read the file, the branch, or the tag you are about to replace. `git checkout --`, `git clean`, `git reset --hard`, and branch deletion destroy uncommitted work irreversibly.
-21. **Never change git config, hooks, remotes, or branch protection** as a side effect of a task.
-22. **Never enable, disable, or configure commit signing on the user's behalf** — no `commit.gpgsign`, no `-S`, no SSH signing key. If the branch requires signed commits, stage the work, say that signing is required, and hand the commit to the user.
-23. **When something is ambiguous — which branch, which merge strategy, whether to commit — ask.** Guessing here is expensive and, for history rewrites, unrecoverable.
+1. **Never run `git commit`, `git push`, `git tag`, create a release, or open a PR unless the user asked for that specific action in this session** (section 2 rule 8). "The work looks finished" is not consent, committing is not permission to publish, and each action is a separate authorisation.
+2. **Never merge, approve, or close a pull request, and never merge into the default branch, unless the user asked for that specific action.** No `gh pr merge` — and never `--admin`, which bypasses branch protection — no `gh pr review --approve`, no `git merge` into trunk, no `gh pr close`. Approving your own or another agent's work is not review. Leaving a review comment on someone else's PR is a separate authorisation again: draft the comment for the user unless you were asked to post it.
+3. **Do not commit directly to the default branch unless that is demonstrably the repo's convention.** Resolve the default branch with `git symbolic-ref --quiet --short refs/remotes/origin/HEAD` and strip the `origin/` prefix; if it is unset, run `git remote set-head origin -a` or ask. Get the current branch separately with `git branch --show-current` (empty output means detached HEAD — stop and ask), then compare the two bare names. If they match, read `git log --oneline -20`: history made of PR merges means create and switch to a topic branch first; history of direct commits to trunk means say so and confirm before committing.
+4. **Never rewrite any pushed or shared commit, and never rebase a branch you did not create in this session, without an explicit instruction naming that operation** — to undo a shared commit, use `git revert`.
+5. **Force-push only your own session branch, only on instruction, and only with `--force-with-lease`** — never bare `--force`.
+6. **Never use interactive git flags in a non-interactive session** — `rebase -i` without a no-op sequence editor, `add -i`, `add -p`, `commit` without `-m`, or anything that opens an editor or a pager. Where the workflow wants an interactive step, either avoid it (stage whole files rather than hunks), run it non-interactively by forcing a no-op sequence editor (`GIT_SEQUENCE_EDITOR=: git rebase --autosquash <trunk>`, or `GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash <trunk>` on Git older than 2.44 — section 12), or hand that step to the user.
+7. **Never bypass a hook or a check to force something green.** No `--no-verify`, no `SKIP=`, no `[skip ci]`, no disabling a rule, no marking a test skipped to get a pass. If a gate fails, report the failure and the actual output, and stop.
+8. **Report what hooks and CI actually did.** Never state that tests pass, lint is clean, or a build is green unless you ran it in this session and read the output. Quote the real result.
+9. **Never commit or push secrets, tokens, `.env` files, private keys, credentials, or large binaries.** If the staged diff contains anything that looks like one, stop and ask. A pushed secret is public, and removing it means rewriting published history — the hardest operation to undo.
+10. **Describe only changes you actually made**, verified against the diff. No claimed benchmarks, no "fixes #N" for an issue you did not read, no invented rationale.
+11. **Never add `Signed-off-by` for a human, and never use `git commit -s`/`--signoff` on their behalf.** That trailer is a legal certification under the Developer's Certificate of Origin that the signer wrote the change or has the right to submit it. Only the named person can assert it.
+12. **Never set or override commit authorship.** No `--author`, no `GIT_AUTHOR_NAME`/`GIT_AUTHOR_EMAIL`/`GIT_COMMITTER_*` overrides, no `--date`. Commit under whatever identity the clone is already configured with; if it is wrong or unset, stop and ask.
+13. **Disclose machine authorship where the project's policy permits it** — a `Co-authored-by: Name <email@example.com>` trailer after a blank line — and **check that policy first.** Some projects reject AI-generated contributions outright; Git itself states it will "reject anything that looks AI generated … or that senders don't understand or cannot explain."
+14. **Before deleting or overwriting anything, look at the target first.** Read the file, the branch, or the tag you are about to replace. `git checkout --`, `git clean`, `git reset --hard`, and branch deletion destroy uncommitted work irreversibly.
+15. **Never change git config, hooks, remotes, or branch protection** as a side effect of a task.
+16. **Never enable, disable, or configure commit signing on the user's behalf** — no `commit.gpgsign`, no `-S`, no SSH signing key. If the branch requires signed commits, stage the work, say that signing is required, and hand the commit to the user.
+17. **When something is ambiguous — which branch, which merge strategy, whether to commit — ask.** Guessing here is expensive and, for history rewrites, unrecoverable.
 
 ## 15. Review Checklist
 
@@ -481,7 +438,7 @@ For an AI reviewer. Flag only real defects; cite `file:line` and state the failu
 
 **Secrets and artifacts** — any `.env`, key, token, credential, or connection string in the diff? Any generated files, lockfile churn, or large binaries that should be ignored? Is `.gitignore` updated for anything new that is generated?
 
-**Gates** — did the hooks and CI actually run and pass, with output shown? Any `--no-verify`, `SKIP=`, `[skip ci]`, disabled rule, or skipped test used to force green? Are `.pre-commit-config.yaml` revs pinned? Do CI hooks match the local ones? Was any `--autosquash` rebase run on a Git old enough (before 2.44) to ignore the flag without `-i`?
+**Gates** — did the hooks and CI actually run and pass, with output shown? Any `--no-verify`, `SKIP=`, `[skip ci]`, disabled rule, or skipped test used to force green? Are `.pre-commit-config.yaml` revs pinned? Do CI hooks match the local ones? Any `--autosquash` rebase on Git older than 2.44 without `-i` (flag silently ignored)?
 
 **Release** — version bump consistent with the commit types in the range under the project's own release rules? Is the release commit annotated-tagged and the tag pushed? Is a released version being modified or retagged? Changelog updated under the right Added/Changed/Deprecated/Removed/Fixed/Security heading, newest first, ISO 8601 date? Anything deprecated but unlisted?
 
