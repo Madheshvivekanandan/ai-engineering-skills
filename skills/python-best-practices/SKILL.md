@@ -181,6 +181,10 @@ def allocate_credit(
 
 - Create a class when behaviour and state travel together, or to satisfy a Protocol/port.
   **A class with one method and no state should be a function.**
+- **One class per file.** Each class lives in its own module, named after the class in
+  snake_case (`OrderService` → `order_service.py`); five classes means five files. The only
+  exception is a private helper (e.g. a small frozen dataclass) used exclusively by the
+  class it sits next to.
 - `@dataclass(frozen=True, slots=True)` for value objects; Pydantic `BaseModel` only at
   I/O boundaries (validation/serialization); plain classes for services with injected collaborators.
 - **Composition over inheritance.** Inherit only for genuine `is-a` or to implement an ABC.
@@ -590,7 +594,7 @@ When writing or modifying Python, the agent **must**:
 
 For an AI reviewer. Flag only real defects; cite `file:line` and state the failure scenario.
 
-**Architecture** — layer boundaries respected? DB accessed only from repositories? services free of framework imports? no circular deps? unit sized right (house limits: function ≤30 lines, class ≤200 — no tool in §16 measures either)? duplication that should be extracted — or premature abstraction that shouldn't?
+**Architecture** — layer boundaries respected? DB accessed only from repositories? services free of framework imports? no circular deps? one class per file, module named after it? unit sized right (house limits: function ≤30 lines, class ≤200 — no tool in §16 measures either)? duplication that should be extracted — or premature abstraction that shouldn't?
 
 **Security** — any string-interpolated SQL/shell/path? secrets or tokens hardcoded or logged? input validated at the boundary with bounds and `extra="forbid"`? authn *and* object-level authz (tenant/owner) enforced on every new endpoint? `verify=False`, `shell=True`, `eval`, `pickle`? errors leaking internals to clients?
 
@@ -613,8 +617,3 @@ For an AI reviewer. Flag only real defects; cite `file:line` and state the failu
 **Documentation** — docstrings on new public surfaces, `Raises` listing the contract's exceptions and no more? new env vars in `.env.example`? README/OpenAPI updated? comments explain *why*?
 
 **Linting** — format/ruff/mypy/pytest all green; no new suppressions without a reason.
-
-## 20. References
-
-Sources for every rule above — what each one confirms and the date it was last
-checked — are in [references/sources.md](references/sources.md).
