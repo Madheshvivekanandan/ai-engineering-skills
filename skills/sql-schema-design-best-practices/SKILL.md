@@ -407,8 +407,3 @@ For a reviewer or an AI reviewer. Flag only real defects; cite `file:line` and s
 **Naming** — lower_snake_case, unquoted, no reserved keywords, no `tbl_`/`sp_`? constraints and indexes named explicitly rather than auto-generated? booleans positive? `_at`/`_date` suffixes correct? consistent with the tables around it?
 
 **Security** — credentials stored only as salted hashes? no new PII without a retention answer? tenancy and ownership enforceable in a query rather than only in code? nothing in a constraint name or error message that leaks data?
-
-## 19. References
-
-Sources for every rule above — what each one confirms and the date it was last
-checked — are in [references/sources.md](references/sources.md).

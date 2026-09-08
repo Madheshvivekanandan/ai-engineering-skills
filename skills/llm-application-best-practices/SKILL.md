@@ -574,8 +574,3 @@ arguments redacted to the same standard as the answer? Per-invocation inference-
 emitted and alerted as loop detectors? AI/ML BOM diffed, artifacts hash-verified, third-party tool
 descriptions audited, suggested dependencies verified to exist? Design doc maps to the OWASP GenAI LLM
 Top 10 (2026), plus the ASI list where the feature has tools or memory, with a named owner?
-
-## References
-
-Sources for every rule above — what each one confirms and the date it was last
-checked — are in [references/sources.md](references/sources.md).

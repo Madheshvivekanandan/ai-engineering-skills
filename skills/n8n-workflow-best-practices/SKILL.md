@@ -250,8 +250,3 @@ URL verified against the production endpoint, not the test one?
 
 **Monitoring** — new workflow's expected execution time/error rate known?
 Sensitive data redacted from logs/alerts?
-
-## References
-
-Sources for every rule above — what each one confirms and the date it was last
-checked — are in [references/sources.md](references/sources.md).

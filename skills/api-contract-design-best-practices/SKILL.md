@@ -479,8 +479,3 @@ For an AI reviewer. Flag only real defects; cite `file:line` and state the failu
 **Spec quality** — spec updated with the code? `nullable` anywhere? Singular `example` where `examples` belongs? One model shared across request and response? Shared schemas duplicated inline? `operationId` and tags present? Webhooks in the `webhooks` field rather than only in prose?
 
 **Gates** — spec lint clean? Breaking-change diff clean or explicitly approved? Contract tests present for idempotency replay, pagination caps, conditional requests, unknown parameters, and repeated `DELETE`?
-
-## References
-
-Sources for every rule above — what each one confirms and the date it was last
-checked — are in [references/sources.md](references/sources.md).

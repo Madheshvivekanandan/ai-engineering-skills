@@ -521,8 +521,3 @@ and Escape-dismissible (SC 2.1.2)?
 
 **Gates** — typecheck, lint, build green; no new warnings in touched files; no unexplained
 `eslint-disable`.
-
-## 15. References
-
-Sources for every rule above — what each one confirms and the date it was last
-checked — are in [references/sources.md](references/sources.md).
