@@ -486,8 +486,3 @@ For an AI reviewer. Flag only real defects; cite `file:line` and state the failu
 **Release** — version bump consistent with the commit types in the range under the project's own release rules? Is the release commit annotated-tagged and the tag pushed? Is a released version being modified or retagged? Changelog updated under the right Added/Changed/Deprecated/Removed/Fixed/Security heading, newest first, ISO 8601 date? Anything deprecated but unlisted?
 
 **Attribution and review conduct** — is a `Signed-off-by` present for someone who did not sign it? Is the author, committer, or date overridden (`--author`, `GIT_AUTHOR_*`/`GIT_COMMITTER_*`, `--date`) instead of the clone's configured identity? Is machine authorship disclosed per project policy with a correctly formatted `Co-authored-by` trailer? Is every non-blocking review comment labelled under the repo's single scheme — `Nit:`/`Optional:`/`FYI:`, or Conventional Comments labels with `(non-blocking)` — with no mixing of the two, aimed at the code rather than the author, and reasoned? Is approval being withheld for perfection rather than for code health?
-
-## References
-
-Sources for every rule above — what each one confirms and the date it was last
-checked — are in [references/sources.md](references/sources.md).

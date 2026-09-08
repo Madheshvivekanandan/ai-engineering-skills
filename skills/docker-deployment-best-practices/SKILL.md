@@ -593,8 +593,3 @@ trusted registry, with signature/policy verification at admission?
 and `minReadySeconds`? Manifests in version control? Rollback documented as a single command with
 retained revision history? Migrations backward compatible and run as a separate one-off job rather
 than at app startup? Is the previously deployed artifact still identifiable and pullable?
-
-## References
-
-Sources for every rule above — what each one confirms and the date it was last
-checked — are in [references/sources.md](references/sources.md).
