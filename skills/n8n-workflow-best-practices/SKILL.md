@@ -13,20 +13,15 @@ its author can safely touch.
 
 ## 1. Philosophy
 
-- **A workflow is code.** It deserves the same discipline as a function: a single
-  clear purpose, a name that says what it does, tests for its failure paths, and a
-  git history.
-- **"One workflow, one job."** If you can't describe what a workflow does in one
-  sentence without the word "and," it's doing too much — split it.
-- **Design for the 3am on-call read.** Someone who has never seen this workflow
-  should be able to follow it from trigger to completion without opening every node.
+- **"One workflow, one job."** A workflow doing more than one job gets split.
+- **A reader who has never seen the workflow** should be able to follow it from
+  trigger to completion without opening every node.
 - **Happy path is the easy 80%.** Error handling, retries, and credential hygiene
   are what separate a demo from a production workflow.
 
 ## 2. Naming Conventions
 
-Default names (`HTTP Request 1`, `IF 2`, `Set 3`) are the single biggest driver of
-unmaintainable workflows — rename every node before moving on.
+Rename every default-named node (`HTTP Request 1`, `IF 2`, `Set 3`) before moving on.
 
 - **Nodes: name the action, not the node type.** Start with a verb: `Fetch Stripe
   Invoice`, `Check: User Has Email`, `Send Slack Alert: Sync Failed` — not
@@ -87,14 +82,13 @@ Error handling is not optional for anything that runs unattended.
   just "something broke."
 - **Layer your defenses**, don't rely on one mechanism:
   1. **Node-level retries** (`Retry On Fail`, with a capped attempt count and
-     backoff) for transient faults — timeouts, rate limits, flaky upstreams.
+     backoff — give up and escalate after a fixed number of tries, never loop
+     forever) for transient faults — timeouts, rate limits, flaky upstreams.
   2. **`Continue On Fail`** only for genuinely acceptable failures that shouldn't
      halt the flow (e.g. an optional enrichment step) — never for a step whose
      failure should be visible.
   3. **A global Error Trigger workflow** as the backstop that catches everything
      that slips past the first two layers.
-- **Bound your retries.** Track attempt count and give up (escalate, don't loop
-  forever) after a fixed number of tries.
 - **Map failure classes to actions**, don't treat every error identically: retry
   on `5xx`/timeouts, refresh/alert on `401`, route `422` (malformed data) to a
   human/manual-review queue rather than retrying blindly.
@@ -109,11 +103,10 @@ Error handling is not optional for anything that runs unattended.
 - **Credentials export as references (IDs), not values.** When you export/commit
   a workflow JSON, verify no plaintext secret is present — only a credential ID
   that must be recreated per environment.
-- **Set a persistent `N8N_ENCRYPTION_KEY`** for self-hosted instances. n8n
-  generates one automatically on first run, which is unsuitable for production —
-  losing or rotating it silently invalidates every stored credential. Treat this
-  key with the same care as a database root password; leaking it makes every
-  credential effectively plaintext.
+- **Set a persistent `N8N_ENCRYPTION_KEY`** for self-hosted instances — the
+  auto-generated first-run key is unsuitable for production. Losing or rotating it
+  silently invalidates every stored credential; leaking it makes every credential
+  effectively plaintext. Guard it like a database root password.
 - **Prefer OAuth with scoped permissions and short-lived tokens** over long-lived
   static API keys. Where only a static key is available, scope it to the minimum
   required permission.
@@ -142,8 +135,6 @@ Error handling is not optional for anything that runs unattended.
   into a single JSON array. A single shared file turns every unrelated workflow
   change into a diff across the whole file and forces every edit through the same
   export/import chokepoint.
-- **Standard git hygiene applies**: feature branches, small commits with
-  descriptive messages, PRs for review before merging, tags for releases.
 - **Each environment is its own n8n instance** (or at minimum its own
   credential/variable set); move workflows between them via export/import or the
   API, never by editing prod directly to "match" what's in git.
@@ -169,13 +160,8 @@ Error handling is not optional for anything that runs unattended.
 - **Test the production trigger, not the test one.** A webhook's test URL and
   production URL are different endpoints with potentially different behavior —
   verify against production before calling a webhook workflow done.
-- **Unpin before you trust a manual run again.** Pinned data persists
-  indefinitely until you explicitly unpin it, so a stale pin makes every later
-  manual execution quietly disagree with reality. It does **not** leak into
-  production — n8n states that data pinning "isn't available for production
-  workflow executions." The failure mode is a false green in the editor, not a
-  frozen production node, so treat a pin as something you clear before believing
-  a test, not something you clear before deploying.
+- **Pins never run in production executions**; the risk is a false green in the
+  editor — clear stale pins before trusting a manual run.
 
 ## 9. Monitoring & Observability
 
@@ -195,28 +181,20 @@ Error handling is not optional for anything that runs unattended.
 
 When creating or modifying an n8n workflow, the agent **must**:
 
-1. **Rename every node** from its default name to an action-based name before
-   considering the change complete (§2).
-2. **Never place a secret in a node parameter, `Set` node, sticky note, or commit
-   it in a workflow JSON export.** Use/reference an existing credential; if one
-   doesn't exist, ask the user to create it rather than inventing a placeholder
-   that looks real.
-3. **Add or update a sticky note** for any new or materially changed branch,
-   transformation, or phase (§3) — don't leave new logic undocumented.
-4. **Wire error handling** for any new production-facing node: appropriate
-   retry/`Continue On Fail` setting, and confirm the workflow has an Error
-   Workflow configured in its settings (§5). Flag it explicitly if one is missing.
-5. **Check workflow/DB sync direction before any git or import/export
-   operation** (§7) — state which direction was used and why in the summary.
-6. **Prefer extending or calling an existing sub-workflow** over duplicating a
-   group of nodes; propose extracting a sub-workflow when a node group exceeds
-   ~15–20 nodes or is copy-pasted a second time.
+1. **Rename every default-named node** before considering the change complete (§2).
+2. **If a needed credential doesn't exist, ask the user to create it** rather than
+   inventing a placeholder that looks real (secret handling: §6).
+3. **Sticky-note any new or materially changed branch, transformation, or phase** (§3).
+4. **Wire §5 error handling on new production-facing nodes**, and flag it
+   explicitly if the workflow has no Error Workflow configured.
+5. **Check DB↔file sync direction before any export/import** (§7) — state which
+   direction was used and why in the summary.
+6. **Reuse or extend an existing sub-workflow** instead of duplicating nodes (§4).
 7. **State assumptions explicitly** when a naming, error-handling, or
    environment-separation convention isn't established in the target instance —
    don't silently invent one.
-8. **Never bypass a repo's commit hooks or CI checks** to force a sync; if a hook
-   conflicts with the required sync direction, say so and ask rather than
-   skipping it by default.
+8. **If a commit hook conflicts with the required sync direction, say so and ask**
+   rather than skipping it by default.
 
 ## 11. Review Checklist
 

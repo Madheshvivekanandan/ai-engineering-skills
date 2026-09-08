@@ -61,7 +61,7 @@ Hard rules:
 3. **`POST` is neither safe nor idempotent.** Any `POST` that creates, charges, ships, or notifies needs an idempotency key (§6).
 4. **`PUT` replaces; `PATCH` merges.** Reject a partial body on `PUT` instead of merging it — clients that correctly send a full representation would otherwise silently lose fields.
 5. **`PATCH` needs a declared patch format.** RFC 5789 defines no default patch document format, so "PATCH with a JSON body" is not a specification. Accept `application/merge-patch+json` or `application/json-patch+json` and reject bare `application/json` on `PATCH` with `415`.
-6. **`PATCH` is idempotent only by construction.** RFC 5789 says PATCH "is neither safe nor idempotent" and recommends a conditional request — a strong ETag in `If-Match` — for patch formats that operate from a known base-point (it explicitly exempts append-style patches); **this document requires `If-Match` on every `PATCH`**, so a retry cannot apply twice. **Prefer absolute values in write bodies**, never `{"increment": 1}`. Where a relative body is genuinely unavoidable (a counter you cannot read-modify-write), an `Idempotency-Key` (§6) is **mandatory in addition to** `If-Match`; document the exception on that operation.
+6. **`PATCH` is idempotent only by construction.** RFC 5789 recommends a conditional request — a strong ETag in `If-Match` — for base-point patch formats (append-style exempted); **this document requires `If-Match` on every `PATCH`**, so a retry cannot apply twice. **Prefer absolute values in write bodies**, never `{"increment": 1}`. Where a relative body is genuinely unavoidable, an `Idempotency-Key` (§6) is **mandatory in addition to** `If-Match`; document the exception on that operation.
 
 | Patch format | Semantics you must document | Choose when |
 |---|---|---|
@@ -99,8 +99,6 @@ Pick from a short documented set and enumerate every code each operation can emi
 - **`400` vs `422` vs `409` vs `412` map to four different client remedies** — fix the syntax, fix the values, re-read state and reconcile, re-fetch the validator and retry. Collapsing them into `400` makes automated retry logic impossible to write.
 - **Never return `200` with an error in the body**, and never ship a `{"success": false}` envelope. It defeats every proxy, SDK, retry policy, alert rule, and dashboard that keys on the status class.
 - Clients interpret unrecognized codes by their class (`4xx` client fault, `5xx` server fault). Design so that fallback produces sane behavior.
-- `428` and `429` are **not** in RFC 9110; they are defined by RFC 6585, which is Standards Track and current.
-
 ### 4.1 Long-running operations
 
 Work that cannot finish inside the request returns `202 Accepted` plus a URL to a **status monitor**
@@ -114,9 +112,7 @@ guess whether absence means "not yet" or "failed".
 
 ## 5. Errors: One Machine-Readable Shape
 
-Serve **every** `4xx`/`5xx` as `application/problem+json` per **RFC 9457**, which obsoletes RFC 7807.
-Cite 9457; when a vendor doc or style guide still shows 7807, check whether its text has been
-refreshed before copying it.
+Serve **every** `4xx`/`5xx` as `application/problem+json` per **RFC 9457** (obsoletes RFC 7807 — cite 9457).
 
 ```http
 HTTP/1.1 422 Unprocessable Content
@@ -154,11 +150,10 @@ Content-Type: application/problem+json
 
 ## 6. Idempotency for Unsafe Operations
 
-`GET`, `HEAD`, `PUT`, and `DELETE` are idempotent by definition. `POST` is not, and `PATCH` is not
-unless you construct it that way (§3, rule 6). So: **accept `Idempotency-Key` on every `POST` that
-creates, charges, ships, or notifies**, and on the documented exception in §3 rule 6 — a `PATCH` whose
-body is unavoidably relative rather than absolute, where the key is required *in addition to*
-`If-Match`. Do not require or honor it elsewhere.
+`GET`, `HEAD`, `PUT`, and `DELETE` are idempotent by definition; `POST` and (by default) `PATCH`
+are not. **Accept `Idempotency-Key` on every `POST` per §3 rule 3, and on the §3-rule-6 `PATCH`
+exception** (relative body; key required *in addition to* `If-Match`). Do not require or honor it
+elsewhere.
 
 | Aspect | Rule |
 |---|---|
@@ -171,22 +166,16 @@ body is unavoidably relative rather than absolute, where the key is required *in
 | Do not record | Input-validation failures, and collisions with a concurrently-executing request for the same key. Return a documented **retryable** error for both |
 | Concurrency | Lock the key (or use a unique constraint) so two simultaneous retries cannot both execute |
 
-- Caching only successes is the classic mistake. The retry that matters is the one after a `500` or a dropped connection — exactly the double-charge the mechanism exists to prevent.
-- Caching a validation failure permanently poisons the key: the client fixes its payload, retries with the same key, and can never succeed.
-- Ignoring the body means a client bug that reuses one key across different payloads silently receives the wrong prior result and never learns.
 - Azure-aligned estates spell this `Repeatability-Request-ID` / `Repeatability-First-Sent`. Either is legitimate; pick one per organization and use it everywhere.
 
 ## 7. Pagination
 
-**Paginate every collection endpoint from its first release.** Adding pagination later is a
-backwards-incompatible change — clients that read the whole array silently truncate — so an
-unpaginated list is a permanent mistake and a standing resource-exhaustion vector. "The table is
-small" is not an exemption; the table is small today.
+**Paginate every collection endpoint from its first release** (§1: unbounded is broken; §11: adding
+pagination later is breaking). "The table is small" is not an exemption; the table is small today.
 
-**Default to cursor (token) pagination.** Offset pagination **skips and duplicates rows** when the
-underlying set changes between page fetches, and degrades as the offset grows because the database
-walks and discards everything before it. Use offset only for small, static, human-browsed sets that
-genuinely need "jump to page N", and document that results may shift.
+**Default to cursor (token) pagination.** Offset pagination skips and duplicates rows when the set
+changes between fetches, and degrades as the offset grows. Use offset only for small, static,
+human-browsed sets that genuinely need "jump to page N", and document that results may shift.
 
 | Aspect | Rule |
 |---|---|
@@ -246,14 +235,10 @@ Wrap every single-resource response in an object rather than returning a bare sc
 
 ## 11. Versioning and Backward Compatibility
 
-**Default to not versioning.** Extend compatibly. Every live major version multiplies the
-maintenance, test, and security-patch surface, and the large majority of changes can be made
-compatibly if the surface was designed for extension.
-
-When you genuinely must version, **pick exactly one mechanism for the whole API** and enforce it in
-the spec. Recommended default: **a single major version segment in the path (`/v1/...`), applied
-API-wide, bumped almost never.** It is visible in logs, routing, and cache keys, needs no header
-negotiation, and is what the overwhelming majority of public APIs ship.
+**Default to not versioning** — extend compatibly; every live major version multiplies the
+maintenance, test, and security-patch surface. When you genuinely must version, **pick exactly one
+mechanism for the whole API** and enforce it in the spec. Recommended default: **a single major
+version segment in the path (`/v1/...`), applied API-wide, bumped almost never.**
 
 - **Never version per endpoint** (`/v1/orders` beside `/v3/orders`) and never mix mechanisms — caching, routing, and client configuration all become undecidable.
 - Two alternatives are legitimate house styles, and if your organization already standardizes one, follow it: **media-type versioning** via `Accept` (Zalando's rule 114 requires it and rule 115 forbids URL versioning), and **a required dated version parameter** such as `api-version=YYYY-MM-DD` (the Azure guidelines require this and forbid path versioning). The dated parameter is the better choice when you ship frequent dated behavior changes to a large external client base and want every client pinned.
@@ -265,7 +250,7 @@ Forbid all of these within a major version. Each breaks working client code even
 
 | Breaking change | Why it surprises people |
 |---|---|
-| Removing or renaming a field, endpoint, or enum member | Obvious, but "nobody uses it" is unverifiable without per-caller telemetry |
+| Removing or renaming a field, endpoint, or enum member | "Nobody uses it" is unverifiable without telemetry |
 | **Adding a required request field** | Every existing request instantly becomes invalid |
 | **Removing a response field** | Clients dereference it unconditionally |
 | **Narrowing a type** (`string` to `integer`, wider to narrower numeric) | Wire-compatible in some cases, still a compile or parse break |
@@ -291,8 +276,8 @@ members, MUST NOT depend on property order, and MUST NOT depend on a field's abs
 
 | Signal | Form | Note |
 |---|---|---|
-| `Deprecation` (RFC 9745, Standards Track, March 2025) | Structured Field Item carrying a date: `Deprecation: @1688169599` | May be past or future. Changes no behavior on its own |
-| `Sunset` (RFC 8594, Informational, May 2019) | HTTP-date: `Sunset: Sun, 31 Dec 2028 23:59:59 GMT` | RFC 9745 requires it be **no earlier** than the `Deprecation` date. Clients SHOULD treat it as a hint |
+| `Deprecation` (RFC 9745) | Structured Field Item carrying a date: `Deprecation: @1688169599` | May be past or future. Changes no behavior on its own |
+| `Sunset` (RFC 8594) | HTTP-date: `Sunset: Sun, 31 Dec 2028 23:59:59 GMT` | RFC 9745 requires it be **no earlier** than the `Deprecation` date. Clients SHOULD treat it as a hint |
 | Migration docs | `deprecation` link relation in a `Link` header (RFC 8288) | Registered by RFC 9745 §6.2, so use the bare token: `Link: <https://api.example.com/deprecation-policy>; rel="deprecation"` — not an absolute-URI relation type |
 
 **Instrument the deprecated operation per caller.** Without usage telemetry the sunset date is a
@@ -303,7 +288,7 @@ guess and the removal is an outage. After sunset, return `410 Gone`, not `404`.
 Per RFC 9110 §13:
 
 - **Return an `ETag` on every single-resource `GET`** and support `If-None-Match`, so an unchanged resource answers `304 Not Modified` with no body. Without a validator every poll transfers the whole representation.
-- **Require `If-Match` on every `PATCH` (§3 rule 6), and on `PUT` and `DELETE` for any resource with concurrent writers**, and return `412 Precondition Failed` on mismatch. This is the only interoperable defense against the lost-update (mid-air collision) problem; without it the last writer silently overwrites changes it never saw. **Default: `428 Precondition Required`** for an unconditional write — that is the condition RFC 6585 §3 defines it for, whereas `412` properly means a precondition was present and evaluated false. `412` is an acceptable house alternative if your clients already special-case it; document whichever you pick, and never return `200`.
+- **Require `If-Match` on every `PATCH` (§3 rule 6), and on `PUT` and `DELETE` for any resource with concurrent writers**; return `412 Precondition Failed` on mismatch — the only interoperable defense against the lost-update problem. **Default: `428 Precondition Required`** for an unconditional write (§4 table); `412` is an acceptable house alternative if your clients already special-case it — document whichever you pick, and never return `200`.
 - Use **strong** ETags by default; `W/` weak validators only where you deliberately mean semantic equivalence (ignoring a formatting-only difference).
 - **Evaluate preconditions in RFC 9110's order:** `If-Match`, then `If-Unmodified-Since`, then `If-None-Match`, then `If-Modified-Since`. Reordering makes a request's outcome depend on which headers a client happened to combine.
 - **Derive the ETag deterministically from stored state** — a version column, or a content hash over a canonically-ordered serialization. Never from a request-time timestamp, a random id, an object address, or a hash over an unordered map: a non-deterministic ETag makes every `If-None-Match` miss and every `If-Match` fail, converting an optimization into a permanent `412` generator.
@@ -344,17 +329,14 @@ RateLimit: "burst";r=50;t=30
 | CSRF | Exempt receiver routes from CSRF token middleware, or legitimate machine-to-machine POSTs are silently rejected |
 | IP allowlisting | A useful second control, **never** a substitute for signature verification — IPs are shared and rotate |
 
-Failure modes worth naming, because they are silent: doing the real work before responding (the
-delivery times out, gets retried, and the duplicate work compounds); verifying the signature against
-a framework-parsed or re-serialized body (always fails); and comparing signatures with `==` (leaks
-the signature by timing). Where a number above comes from a specific provider's production defaults,
-treat it as a sane starting value, not a standard.
+Where a number above comes from a specific provider's production defaults, treat it as a sane
+starting value, not a standard.
 
 ## 15. Specifying the Contract: OpenAPI
 
 - **Write the OpenAPI document first and review it as the contract.** A spec generated from code after the fact documents whatever the code happens to do, accidents included, and cannot be used to review a design before it ships.
 - One self-contained document per API, carrying `info.title`, `info.version`, `contact`, and an owning-team/audience marker. An unowned spec is an inventory failure waiting to happen.
-- **Target OpenAPI 3.1 or later** (v3.2.0 is the current release, published 19 September 2025), because from 3.1 the Schema Object is real JSON Schema 2020-12 rather than Draft 05:
+- **Target OpenAPI 3.1 or later** (v3.2.0 is current), because from 3.1 the Schema Object is real JSON Schema 2020-12 rather than Draft 05:
 
 | Do | Don't |
 |---|---|
@@ -364,7 +346,7 @@ treat it as a sane starting value, not a standard.
 
 - Describe outbound webhooks in the top-level **`webhooks`** field (present in 3.1.0, absent from 3.0) with the same schema rigor as inbound operations. Webhooks documented only in prose are untestable and drift immediately.
 - Reuse via `components` — schemas, parameters, responses, `securitySchemes`. Duplicated inline schemas guarantee a later fix lands in some copies and not others.
-- Every operation declares: `operationId`, at least one tag, a `security` requirement, every response code it can emit, and a `Location` header on `201` responses (a `202` declares `Operation-Location` instead, §4.1).
+- Every operation declares: `operationId`, at least one tag, a `security` requirement, every response code it can emit, and the §4-required response headers.
 - Separate request and response schemas per operation (`OrderCreate`, `OrderPatch`, `Order`). Never publish one model used in both directions — that is how `readOnly` fields become writable.
 
 ## 16. Contract Gates in CI
@@ -396,12 +378,16 @@ test -f openapi.yaml
 #   only a legitimate segment like /create-only-mode would - pipe it through `grep -v`.
 ```
 
-Project Spectral rules worth writing, each failing the build: every `4xx`/`5xx` response declares
-`content['application/problem+json']`; every declared `401` declares a `WWW-Authenticate` header;
-every operation has a `security` field (explicit `security: []` for public ones); every operation
-returning a collection declares the pagination parameters under their house names (`page_size` and
-`page_token` by default, §7); every creating `POST` declares a `Location` header on its `201`; every
-operation has an `operationId` and at least one tag.
+Project Spectral rules worth writing, each failing the build:
+
+```text
+problem-json-on-errors      # every 4xx/5xx declares content['application/problem+json']
+www-authenticate-on-401     # every declared 401 declares a WWW-Authenticate header
+security-on-every-operation # explicit `security: []` for public operations
+pagination-house-names      # collection operations declare page_size/page_token (§7)
+location-on-201             # every creating POST declares a Location header on its 201
+operation-id-and-tag        # every operation has an operationId and at least one tag
+```
 
 Contract tests to run against a live instance:
 
@@ -430,21 +416,18 @@ gate. Do not carry another project's numbers over as if they were measured here.
 
 When designing or changing an HTTP API, the agent **must**:
 
-1. **Read the existing spec and neighbouring endpoints first.** Match the repo's casing, error envelope, pagination style, and version mechanism. The repo's convention beats this document.
-2. **Update the OpenAPI document in the same change** as the handler. A change to a public surface with no spec change is incomplete.
-3. **Never write a mutating `GET` or `HEAD`**, and never make `PUT` or `DELETE` non-idempotent.
-4. **Add an idempotency path** to any new `POST` that creates, charges, ships, or notifies — including the body fingerprint and the retention window — or state explicitly why it is unnecessary. Write `PATCH` bodies as absolute values; if a relative body is unavoidable, it needs an `Idempotency-Key` **on top of** `If-Match` (§3 rule 6), and say so.
-5. **Paginate every new collection endpoint** with a documented default and an enforced maximum page size. Never ship an unbounded list, however small the table is today.
-6. **Return an `ETag` on every single-resource `GET` and require `If-Match` on writes per §12**, answering `412` on mismatch and `428` on an unconditional write to a contested resource. Derive the ETag from stored state, never from request time or a random value.
-7. **Return `application/problem+json` with a stable machine-readable code** on every error path, and never include stack traces, SQL, upstream error text, internal ids, or PII.
-8. **Scope every query by the authenticated principal**, never by an id taken from the path or body, and return the same response for "absent" and "not yours".
-9. **Bind request bodies to explicit request schemas**, never to persistence models, and mark server-owned fields `readOnly`.
-10. **Classify every contract change as breaking or non-breaking against §11 and say which** in the response. If it is breaking, stop and propose the compatible alternative or the version and deprecation path — do not ship it silently.
-11. **Never invent business semantics.** If status transitions, currency rounding, retry windows, quota tiers, or which fields are required are ambiguous, **ask**; do not guess a default.
-12. **State every assumption explicitly** in the response when proceeding under uncertainty.
-13. **Cite the normative source when it decides a design question** (RFC 9110 for methods and status codes, RFC 5789 for `PATCH`, RFC 6585 for `428`/`429`, RFC 9457 for errors), and never assert a version number, header name, limit, or protocol detail you have not verified. `RateLimit`/`RateLimit-Policy` are still an Internet-Draft — say so whenever you recommend them.
-14. **Run the contract gates** (spec lint, breaking-change diff, contract tests) and report the real output. Never claim verification you did not perform.
-15. **Flag anything security-relevant** you touch — auth, tenancy scoping, id handling, outbound URLs, webhook verification, quota — in the summary.
+1. **Update the OpenAPI document in the same change** as the handler. A change to a public surface with no spec change is incomplete.
+2. Apply §3's method guarantees: no mutating `GET`/`HEAD`, no non-idempotent `PUT`/`DELETE`.
+3. Add the §6 idempotency path to qualifying `POST`s (and §3-rule-6 `PATCH`es) — or state explicitly why it is unnecessary.
+4. Apply §12 on every new resource: `ETag` on `GET`, `If-Match` on writes.
+5. Every error path: problem+json with a stable code, no internals leaked (§5).
+6. Bind bodies to explicit request schemas with `readOnly` server-owned fields (§10, §15).
+7. **Classify every contract change as breaking or non-breaking against §11 and say which** in the response. If it is breaking, stop and propose the compatible alternative or the version and deprecation path — do not ship it silently.
+8. **Never invent business semantics.** If status transitions, currency rounding, retry windows, quota tiers, or which fields are required are ambiguous, **ask**; do not guess a default.
+9. **State every assumption explicitly** in the response when proceeding under uncertainty.
+10. **Cite the normative source when it decides a design question** (RFC 9110 for methods and status codes, RFC 5789 for `PATCH`, RFC 6585 for `428`/`429`, RFC 9457 for errors), and never assert a version number, header name, limit, or protocol detail you have not verified.
+11. **Run the contract gates** (spec lint, breaking-change diff, contract tests) and report the real output. Never claim verification you did not perform.
+12. **Flag anything security-relevant** you touch — auth, tenancy scoping, id handling, outbound URLs, webhook verification, quota — in the summary.
 
 ## 18. Review Checklist
 
