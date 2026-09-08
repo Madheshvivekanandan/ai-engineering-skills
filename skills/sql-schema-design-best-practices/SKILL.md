@@ -5,7 +5,7 @@ description: Stack-agnostic standard for designing and evolving relational datab
 
 # SQL Schema Design Best Practices
 
-Opinionated synthesis of the current PostgreSQL documentation (the pages cited below self-reported PostgreSQL 18), the PostgreSQL wiki's "Don't Do This", Markus Winand's indexing material (*SQL Performance Explained*, freely readable as use-the-index-luke.com), Sadalage and Fowler's *Evolutionary Database Design* plus Danilo Sato's ParallelChange, Bill Karwin's *SQL Antipatterns* vocabulary, and Simon Holywell's SQL Style Guide.
+Opinionated synthesis of the PostgreSQL documentation and wiki, Markus Winand's indexing material, Sadalage and Fowler's evolutionary database design, Bill Karwin's *SQL Antipatterns* vocabulary, and Simon Holywell's SQL Style Guide.
 
 **Default engine: PostgreSQL.** The design rules here — normalization, key choice, which constraint to reach for, composite index column order, migration sequencing, naming — port to any relational engine. The *spellings* and a handful of *behaviours* do not; section 2 names the ones that actually differ. This document is deliberately ORM-agnostic: it constrains the schema and the migration, not your data-access library. When this document conflicts with an existing in-repo convention, follow the repo and say so.
 
@@ -27,7 +27,7 @@ Carry over the *intent* of PostgreSQL syntax (`timestamptz` = timezone-aware ins
 
 | Behaviour | PostgreSQL (the default assumed here) | Elsewhere |
 |---|---|---|
-| Nulls in `UNIQUE` | Nulls are distinct, so a nullable unique column accepts unlimited null rows; a `NULLS NOT DISTINCT` clause opts out | The PostgreSQL docs state the SQL standard leaves this implementation-defined. Check your engine; do not assume — and the `NULLS NOT DISTINCT` opt-out itself only exists on PostgreSQL 15 and later (it is documented on the PostgreSQL 15 constraints page and absent from the PostgreSQL 14 one). |
+| Nulls in `UNIQUE` | Nulls are distinct, so a nullable unique column accepts unlimited null rows; `NULLS NOT DISTINCT` (PostgreSQL 15+, section 5) opts out | The SQL standard leaves this implementation-defined. Check your engine; do not assume. |
 | Transactional DDL | DDL runs in a transaction and rolls back cleanly | MySQL largely lacks it — a failed migration can leave a half-applied schema. There: one statement per migration file, each re-runnable. |
 | `ADD CONSTRAINT ... NOT VALID` + `VALIDATE CONSTRAINT` | The standard way to add a constraint to a big table online | PostgreSQL-specific syntax. Other engines need their own online-DDL path or an external tool. |
 | `CREATE INDEX CONCURRENTLY` | Builds without blocking writes | PostgreSQL-specific spelling; most engines have some online index build, with different caveats. |
@@ -62,7 +62,7 @@ Model to third normal form before writing DDL: one table per entity, one atomic 
 - **Adding a surrogate does not retire the natural key.** Keep a `UNIQUE` constraint on it, or you have licensed logical duplicates behind distinct ids.
 - **Auto-generated integer keys:** `bigint GENERATED ALWAYS AS IDENTITY`. Use `BY DEFAULT` only where the application must supply explicit ids (imports, replication). Do not use `serial` — the PostgreSQL wiki recommends identity columns on PostgreSQL 10+ and calls out serial's awkward schema, dependency, and permission behaviour. `bigint` from the start avoids the emergency migration at 2147483647.
 - **Identity is not a uniqueness guarantee.** The docs say so explicitly: sequences can be reset and values can be supplied manually. Always back the column with `PRIMARY KEY` or `UNIQUE`.
-- **If keys must be opaque or client-generated, use time-ordered UUIDv7** (`uuidv7()`), not random UUIDv4 (`gen_random_uuid()` / `uuidv4()`), for anything that will be a primary key or a heavily-inserted index key. RFC 9562 states that time-ordered monotonic UUIDs "benefit from greater database-index locality because the new values are near each other in the index", and that the difference versus random insertion "can be one order of magnitude or more". RFC 9562 also recommends UUIDv7 over v1/v6. **Availability matters here:** server-side `uuidv7()` is a recent PostgreSQL addition, and `gen_random_uuid()` is the only UUID generator present in older majors. Check `\df uuidv7` on the target server; where it is absent, generate UUIDv7 in the application (every major language has a library) and keep the column type `uuid` with no server default. Do not swap in `gen_random_uuid()` as a substitute — that is UUIDv4, which is exactly what this rule rejects for index keys.
+- **If keys must be opaque or client-generated, use time-ordered UUIDv7** (`uuidv7()`), not random UUIDv4 (`gen_random_uuid()` / `uuidv4()`), for anything that will be a primary key or a heavily-inserted index key — random values wreck index locality (RFC 9562: the difference "can be one order of magnitude or more"). Server-side `uuidv7()` is a recent PostgreSQL addition: check `\df uuidv7` on the target server; where absent, generate UUIDv7 in the application and keep the column type `uuid` with no server default. **Do not swap in `gen_random_uuid()` as a substitute** — that is UUIDv4, exactly what this rule rejects for index keys.
 - **Never renumber or reuse surrogate key values** to close gaps. Gaps are meaningless; renumbering silently repoints every external reference, cached id, and exported report at the wrong row.
 
 ## 5. Constraints Are the Guarantee
@@ -99,8 +99,6 @@ Every rule that must *always* hold is a database constraint, not only an applica
 | Open-ended document | `jsonb` | `json`; `jsonb` as a way to avoid designing | The docs say most applications should prefer `jsonb`, the documented exception being legacy assumptions about object-key ordering — and only `jsonb` supports GIN indexing of the document itself (an expression index such as `((doc->>'sku'))` works on either type). |
 | Boolean | `boolean NOT NULL`, positively named | a nullable three-state boolean | If there is a real third state, it is an enum or a lookup, not a null. |
 
-Exact limits worth knowing, from the numeric and date/time docs: `smallint` -32768..32767, `integer` -2147483648..2147483647, `bigint` -9223372036854775808..9223372036854775807; `numeric` up to 131072 digits before and 16383 digits after the decimal point; `timestamp`/`timestamptz` 8 bytes at 1 microsecond resolution; `date` 4 bytes at 1 day; `interval` 16 bytes.
-
 **Collation is part of the schema.** Set it deliberately at database creation and treat a later change as a breaking one: sort order, comparison, and therefore `UNIQUE` and range results all depend on it. The ALTER TABLE docs are explicit that "if the collation for a column has been changed, an index rebuild is required because the new sort order might be different".
 
 **Rules for `jsonb` columns:**
@@ -109,7 +107,7 @@ Exact limits worth knowing, from the numeric and date/time docs: `smallint` -327
 2. Keep a somewhat fixed structure, as the JSON docs themselves recommend. A document whose shape is genuinely unpredictable is also unqueryable.
 3. Promote any field you filter, sort, join, or constrain on into a real column — or at minimum add an expression index on it. There are no types, no `NOT NULL`, and no foreign keys inside a document.
 4. Choose the GIN operator class deliberately: default `jsonb_ops` indexes keys and values; `jsonb_path_ops` is smaller and faster but supports fewer operators.
-5. `jsonb` rejects null bytes inside strings and rejects `NaN`/`Infinity` numerics. Do not design a serialization format that needs them. (Note: PostgreSQL's JSON docs still cite RFC 7159, which has been obsoleted by RFC 8259, Internet Standard STD 90.)
+5. `jsonb` rejects null bytes inside strings and rejects `NaN`/`Infinity` numerics. Do not design a serialization format that needs them.
 
 **Timestamp range queries:** write `ts >= :start AND ts < :end`. Never `BETWEEN` — it is a closed interval, so a month range includes only the first instant of the final day, and adjacent ranges double-count the boundary instant (wiki).
 
@@ -136,7 +134,6 @@ Only leading equality predicates plus the first inequality act as *access* predi
 | Non-B-tree access methods | Containment, full text, geometry, huge append-only ranges | Only B-tree, GiST, GIN and BRIN support multiple key columns at all. Column order matters for B-tree and GiST; it is irrelevant for GIN and BRIN. |
 
 - **Do not index every column named in a `WHERE` clause.** One well-ordered composite index usually replaces three single-column ones at a third of the write cost.
-- **`ANALYZE` the affected tables** after creating an index, after a backfill, and after any bulk load, before judging anything. Plans come from statistics.
 - **Drop indexes with zero recorded scans** (see the gate in section 16), after confirming they do not enforce a constraint and are not used only by a monthly job.
 - Prefer a real index over a cache. Add the index first, measure, then decide whether the cache is still needed.
 
@@ -153,12 +150,12 @@ Only leading equality predicates plus the first inequality act as *access* predi
 
 ## 9. Migrations and Zero-Downtime Evolution
 
-- **Every schema change is a versioned migration file**, committed in the same repository and the same commit as the code that needs it. Sadalage and Fowler are explicit: all database artifacts belong in version control alongside the application, each change expressed as a migration script. Out-of-band DDL desynchronizes environments and makes the schema unreproducible.
+- **Every schema change is a versioned migration file**, committed in the same repository and the same commit as the code that needs it. Out-of-band DDL desynchronizes environments and makes the schema unreproducible.
 - **Every migration ships a tested rollback path.** Either a reverse migration that CI actually executes, or — for genuinely irreversible steps — a written recovery plan in the PR (restore point, retained shadow column, replay procedure). "We would restore a backup" is only a plan once someone has timed it.
 - **Every developer and every CI job gets its own database instance**, and migrations run in CI on every commit.
 - **No destructive DDL without an explicit sign-off note** in the PR naming what is dropped, what reads it today, and how long the data has been unused.
 
-**Expand / migrate / contract** (ParallelChange, as documented by Danilo Sato on martinfowler.com, which credits Joshua Kerievsky with first documenting it as a refactoring strategy in 2006). Three **separately released** phases, because during a rolling deploy old and new application code run simultaneously against one schema:
+**Expand / migrate / contract** (ParallelChange): three **separately released** phases, because during a rolling deploy old and new application code run simultaneously against one schema:
 
 | Phase | Schema | Application |
 |---|---|---|
@@ -258,92 +255,17 @@ All lower_snake_case, never quoted, never mixed-case. PostgreSQL folds unquoted 
 
 ## 15. Named Anti-Patterns
 
-Karwin's *SQL Antipatterns* vocabulary, worth adopting because it makes review comments short and unambiguous:
+Karwin's *SQL Antipatterns* vocabulary — adopt it because it makes review comments short and unambiguous. Each name maps to the section covering the fix:
 
-| Name | What it looks like | Fix |
-|---|---|---|
-| Jaywalking | Comma-separated ids in one column | Child or junction table with a real FK |
-| Naive Trees | Adjacency list where the queries are subtree-shaped | Pick a traversal structure by the rule in section 3 (closure table by default) |
-| ID Required | A surrogate `id` bolted onto every table reflexively | Natural key where it is immutable and narrow; where you add a surrogate, keep the natural-key `UNIQUE` |
-| Keyless Entry | Tables or joins with no foreign keys, or no primary key | Declare them |
-| Entity-Attribute-Value | `(entity_id, attr_name, value)` for a shape you know | Typed columns; `jsonb` only for genuinely open shapes |
-| Polymorphic Associations | `parent_id` + `parent_type` | One nullable FK per parent + `CHECK`, or per-parent intersection tables |
-| Multicolumn Attributes | `tag1`, `tag2`, `tag3` | Child table |
-| Metadata Tribbles | A table or column cloned per value (`orders_2026`) | Declarative partitioning |
-| Rounding Errors | Float for money | `numeric`, or integer minor units |
-| 31 Flavors | The allowed value set hardcoded where it cannot be joined or extended | Lookup table + FK, or an explicit `CHECK` |
-| Index Shotgun | Indexing at random, or one index per `WHERE` column | One justified composite index per query shape |
-| Fear of the Unknown | Mishandling null (`= NULL`, `NOT IN` with nulls, a null-defeated `CHECK`) | `IS NULL`/`IS NOT NULL`, `NOT EXISTS`, `NOT NULL` |
-| Implicit Columns | `SELECT *` in production code | Explicit column lists |
-| Readable Passwords | Recoverable password storage | Salted hashes only |
-| Pseudokey Neat-Freak | Renumbering surrogate keys to close gaps | Leave the gaps |
+- Jaywalking (CSV ids in a column) → §3 · Naive Trees (adjacency list for subtree queries) → §3 · Entity-Attribute-Value → §3 · Polymorphic Associations (`parent_id` + `parent_type`) → §3 · Multicolumn Attributes (`tag1..tag3`) → §3 · 31 Flavors (hardcoded value set) → §3 · Readable Passwords (recoverable credential storage) → §3
+- ID Required (reflexive surrogate `id`) → §4 · Keyless Entry (no PK or FK) → §4–§5 · Pseudokey Neat-Freak (renumbering keys to close gaps) → §4
+- Rounding Errors (float for money) → §6 · Fear of the Unknown (null mishandling) → §5, §8 · Index Shotgun (an index per `WHERE` column) → §7 · Implicit Columns (`SELECT *`) → §8 · Metadata Tribbles (table or column cloned per value) → §13
 
 ## 16. Schema Gates
 
-Run these as review aids, and as CI checks where they prove stable. **Record your project's own baseline the first time you run each one**, then gate on "no worse than baseline" — never on an absolute number copied from another project. The catalog queries below are hand-written constructions, not documented APIs: test each against your own database and confirm the hits by hand before wiring it into CI.
+Run these as review aids, and as CI checks where they prove stable. **Record your project's own baseline the first time you run each one**, then gate on "no worse than baseline" — never on an absolute number copied from another project.
 
-```sql
--- Tables with no primary key
-SELECT t.table_schema, t.table_name
-FROM information_schema.tables t
-WHERE t.table_type = 'BASE TABLE'
-  AND t.table_schema NOT IN ('pg_catalog', 'information_schema')
-  AND NOT EXISTS (
-    SELECT 1 FROM information_schema.table_constraints tc
-    WHERE tc.table_schema = t.table_schema AND tc.table_name = t.table_name
-      AND tc.constraint_type = 'PRIMARY KEY');
-
--- Forbidden data types
--- this excludes only the system schemas; replace with an inclusion list of your project's
--- schemas (e.g. table_schema IN ('app','billing')) so extension-owned tables do not show up
-SELECT table_schema, table_name, column_name, data_type
-FROM information_schema.columns
-WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-  AND data_type IN ('real', 'double precision', 'money', 'character',
-                    'timestamp without time zone', 'time with time zone');
-
--- Foreign keys whose leading child column is not indexed
--- (leading-column heuristic: expect false positives and negatives on composite keys.
---  A partial or INVALID index does not count as covering a foreign key, hence the
---  indpred/indisvalid tests: a partial index WHERE deleted_at IS NULL would otherwise
---  mask a genuinely unindexed FK.)
-SELECT c.conrelid::regclass AS child_table, c.conname
-FROM pg_constraint c
-WHERE c.contype = 'f'
-  AND NOT EXISTS (SELECT 1 FROM pg_index i
-                  WHERE i.indrelid = c.conrelid AND i.indkey[0] = c.conkey[1]
-                    AND i.indisvalid AND i.indpred IS NULL);
-
--- Never-used indexes, largest first
--- this also lists primary-key and unique-constraint indexes, which cannot be dropped
--- without dropping the constraint (see section 7), and on an idle or freshly restored
--- database every index has zero scans -- read it against production statistics only
-SELECT relname, indexrelname, idx_scan,
-       pg_size_pretty(pg_relation_size(indexrelid)) AS size
-FROM pg_stat_user_indexes
-WHERE idx_scan = 0
-ORDER BY pg_relation_size(indexrelid) DESC;
-
--- INVALID indexes left behind by a failed CREATE INDEX CONCURRENTLY
-SELECT c.relname
-FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
-WHERE NOT i.indisvalid;
-
--- NOT VALID constraints that were never validated
-SELECT conrelid::regclass, conname, contype
-FROM pg_constraint
-WHERE NOT convalidated;
-
--- Nullable-column ratio per table: a rigor signal, not a verdict
--- this excludes only the system schemas; replace with an inclusion list of your project's
--- schemas (e.g. table_schema IN ('app','billing')) so extension-owned tables do not show up
-SELECT table_schema, table_name,
-       count(*) FILTER (WHERE is_nullable = 'YES') AS nullable,
-       count(*) AS total
-FROM information_schema.columns
-WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-GROUP BY 1, 2 ORDER BY 3 DESC;
-```
+The lint queries in `references/schema-gate-queries.sql` check for: tables with no primary key; forbidden data types; foreign keys whose leading child column is unindexed; never-used indexes (read that one against production statistics only — on an idle or freshly restored database every index has zero scans); INVALID indexes left by a failed `CREATE INDEX CONCURRENTLY`; `NOT VALID` constraints never validated; and nullable-column ratio per table. They are hand-written catalog constructions, not documented APIs: test each against your own database and confirm the hits by hand before wiring it into CI.
 
 | CI gate | How |
 |---|---|
@@ -359,24 +281,14 @@ GROUP BY 1, 2 ORDER BY 3 DESC;
 
 When writing or reviewing schema, DDL, or migrations, the agent **must**:
 
-1. **Read the existing schema first.** Match the repo's naming, key strategy, audit columns, and migration tooling. The repo's convention beats this document.
-2. **Never store money in a float or double.** Exact `numeric`/`decimal`, or integer minor units plus a currency column. Not negotiable, and not "close enough".
-3. **Store every instant as a timezone-aware UTC timestamp** (`timestamptz`), and convert to a local zone only at the presentation boundary.
-4. **Put the constraint in the database.** Anything described as "must always" gets `NOT NULL`, `CHECK`, `UNIQUE`, `FOREIGN KEY`, or `EXCLUDE`. Application-only validation is not a guarantee, because the application is not the only writer.
-5. **Mark columns `NOT NULL` by default**, and when leaving one nullable, state in the migration what a null means there.
-6. **Declare a foreign key for every reference, and index the child columns of every foreign key.**
-7. **Give every table a primary key**, join tables and event logs included.
-8. **Ship a reviewed migration with every schema change, with a tested rollback path.** Never edit an already-applied migration; add a new one.
-9. **Never rename or drop a column, table, or constraint in the same release that stops using it.** Propose expand / migrate / contract explicitly as three deploys, and say which phase the current change is.
-10. **Never mix an additive and a destructive change in one migration.**
-11. **Set `lock_timeout` in every migration** and retry on `55P03`; state `statement_timeout` deliberately — a bound for lock-taking, table-scanning DDL, and an explicit `SET statement_timeout = 0` with a stated reason for long online operations (`CREATE INDEX CONCURRENTLY`, `VALIDATE CONSTRAINT`), which a timeout kill would leave half-done. Use the online recipes in section 9 (`NOT VALID` then `VALIDATE`, `CREATE INDEX CONCURRENTLY` outside a transaction, non-volatile defaults), and state which statements can rewrite the table.
-12. **Write backfills as separate batched, idempotent, resumable jobs** — never as one unbounded `UPDATE` inside a migration — and `ANALYZE` afterwards.
-13. **Never run destructive DDL without an explicit sign-off note** naming what is dropped, what still reads it, and the recovery path. Ask; do not assume the data is dead.
-14. **Justify every new index with the query it serves**, and state the write cost. Do not add an index per `WHERE` column.
-15. **Verify performance claims with `EXPLAIN (ANALYZE, BUFFERS)` on production-scale data**, quote the real output, and wrap DML explains in `BEGIN; ... ROLLBACK;`. Never claim a measurement you did not take.
-16. **Never invent business rules** — retention windows, allowed statuses, rounding and currency behaviour, tenancy boundaries, uniqueness rules. Ask, and state assumptions explicitly when proceeding under uncertainty.
-17. **Say which engine and version you are assuming**, and flag any syntax that is PostgreSQL-specific when the project is not PostgreSQL.
-18. **Keep the change minimal.** No drive-by renames, no reformatting untouched migrations, no "while I was in there" index changes.
+1. **Read the existing schema first.** Match the repo's naming, key strategy, audit columns, and migration tooling.
+2. **Never edit an already-applied migration; add a new one.** Every schema change ships a reviewed migration with a tested rollback path (section 9).
+3. **Say which expand / migrate / contract phase the current change is** when proposing a multi-release evolution.
+4. **Destructive DDL needs an explicit sign-off note — ask; do not assume the data is dead.**
+5. **Never claim a measurement you did not take** — quote real `EXPLAIN (ANALYZE, BUFFERS)` output on production-scale data, wrapping DML explains in `BEGIN; ... ROLLBACK;`.
+6. **Never invent business rules** — retention windows, allowed statuses, rounding and currency behaviour, tenancy boundaries, uniqueness rules. Ask, and state assumptions explicitly when proceeding under uncertainty.
+7. **Say which engine and version you are assuming**, and flag any syntax that is PostgreSQL-specific when the project is not PostgreSQL.
+8. **Keep the change minimal.** No drive-by renames, no reformatting untouched migrations, no "while I was in there" index changes.
 
 ## 18. Review Checklist
 
