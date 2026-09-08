@@ -17,6 +17,23 @@ above were corrected wherever a source disagreed with them; the closing note rec
 corrections were and what still rests on nothing but practice. Nothing is listed here because a
 search result mentioned it, and an HTTP 200 was not accepted as evidence — each page was read.
 
+## Provenance
+
+Formerly the SKILL.md preamble; moved here verbatim in substance.
+
+Performance rule IDs (`async-parallel`, `rerender-memo`, …) come from **Vercel Engineering's
+react-best-practices** (MIT, `metadata.json` version 1.0.0) and stay traceable upstream:
+`https://github.com/vercel-labs/agent-skills/tree/dc8367e6f91c/skills/react-best-practices/rules`
+
+Every rule ID named in SKILL.md was checked against that directory on **2026-08-20** and exists
+there as `rules/<id>.md`; none is invented. What is *not* inherited is the justification — several
+upstream rules are written for Next.js/RSC or for React 19 APIs, and where SKILL.md keeps such an
+ID it says so at the rule (§0, §8, §9). Upstream publishes no git tags or releases and `main` is
+still moving, so the link above pins the last commit that touched the skill directory
+(`dc8367e6f91c`, 2026-04-14) rather than `main`. MIT is stated in upstream's root `README.md` and
+skill frontmatter; the repository has no `LICENSE` file, so there is no upstream copyright line to
+reproduce.
+
 ### Upstream attribution — the base of this document and its licence obligation
 
 - [Vercel Engineering — Introducing: React Best Practices](https://vercel.com/blog/introducing-react-best-practices) — the announcement post (published 14 January 2026; Shu Ding and Andrew Qu). Confirms the rule set is Vercel's and supplies its framing: "It includes 40+ rules across 8 categories, ordered by impact, from CRITICAL (eliminating waterfalls, reducing bundle size) to incremental (advanced patterns)", the eight category names, and that the practices ship as Agent Skills. States no licence and no version number, and its "40+" disagrees with the 70 rules the repository now contains — an upstream inconsistency, not a defect here (checked 2026-08-20).

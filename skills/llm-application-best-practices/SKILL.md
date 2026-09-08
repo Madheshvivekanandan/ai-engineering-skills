@@ -17,10 +17,9 @@ document conflicts with an existing in-repo convention, follow the repo and say 
 - **The model is a component, not the system.** Build it so that when the model is wrong or fooled,
   nothing important breaks.
 - **Every machine-consumed output gets a schema.** Parsing prose is a bug you chose.
-- **Model output is untrusted input** — same threat class as a request body from the internet.
+- **Model output is untrusted input** (section 9).
 - **Retrieved documents and tool results are data, never instructions.**
-- **The prompt is not a security boundary.** Neither is a client-side guardrail. Enforcement lives in
-  deterministic code, IAM policies, and database grants.
+- **Neither the prompt nor a client-side guardrail is a security boundary** (sections 9, 10).
 - **Evals before prompts.** A prompt change with no eval is an unfalsifiable claim.
 - **Simplest tier that clears the bar:** one call, then a coded workflow, then an agent. Agency is the
   property that turns a model error into an unbounded real-world action.
@@ -70,11 +69,9 @@ gate runs, and treat regressions against it as build failures.
 | Verbosity (longer looks better) | Length-match candidates, or log output length beside every score and check the score is not tracking length |
 | Unvalidated judge | Calibrate against a human-labelled subset and report the agreement rate; judge validity is measured per task, never assumed |
 
-Those biases plus limited judge reasoning are documented in Zheng et al. (arXiv:2306.05685); that
-paper's >80% judge/human agreement figure is specific to its own benchmarks, so do not quote it as a
-general guarantee. **Pin the judge** — model id, prompt, and rubric in a committed config; any change
-forces an explicit re-baseline commit, or the metric redefines itself and every historical comparison
-becomes invalid.
+**Pin the judge** — model id, prompt, and rubric in a committed config; any change forces an explicit
+re-baseline commit. The >80% judge/human agreement figure (Zheng et al., arXiv:2306.05685) is
+benchmark-specific — never quote it as a general guarantee.
 
 ## 3. Prompt and Context Design
 
@@ -90,8 +87,7 @@ becomes invalid.
   and it raises cost and latency simultaneously.
 - **Prompts are versioned artifacts** — files in the repo with a name and version, loaded by id and
   recorded on every call. No prompt literals assembled inside a request handler.
-- **Keep the cacheable prefix byte-stable** (section 7): frozen text, deterministically ordered tools,
-  sorted-key JSON, volatile values appended last.
+- **Keep the cacheable prefix byte-stable** — rules and invalidator table in section 7.
 - **Count tokens with the provider's own tokenizer or count-tokens endpoint.** Counts are
   model-specific. Do not size a Claude prompt with `tiktoken` — it is OpenAI's tokenizer and
   undercounts by roughly 15-20% on typical text, worse on code or non-English.
@@ -100,8 +96,6 @@ becomes invalid.
 |---|---|
 | Frozen `system` policy; docs in a separate `<document source="..." trust="external">` block | `f"You are... Here are the docs: {docs}"` |
 | `prompts/extract_invoice.v4.md` loaded by id | prompt literal inside the route handler |
-| `json.dumps(tools, sort_keys=True)` | `json.dumps(tools)` over a dict built by iteration order |
-| user question appended after the last cache breakpoint | `f"Today is {datetime.now()}"` in the system prompt |
 
 ## 4. Structured Output and Tool Contracts
 
@@ -131,24 +125,21 @@ becomes invalid.
 
 ## 5. Retrieval, Grounding, and Citations
 
-RAG pairs parametric memory with a non-parametric store (Lewis et al., arXiv:2005.11401). The
-engineering is mostly in the store, not the prompt.
+The engineering of RAG is mostly in the store, not the prompt.
 
 | Rule | Why |
 |---|---|
 | Enforce authorization **inside the index query**, at document and chunk level | Cosine similarity does not respect ACLs, and no post-filter can un-supply a chunk the model already read |
 | Never trust a client-supplied tenant/scope parameter | It is a suggestion, not a control; derive scope from the authenticated principal server-side |
 | Segregate indexes by tenant and trust tier for sensitive corpora | Index-level isolation removes the misconfiguration path that tag-based separation on one shared index leaves open |
-| Normalize at ingest: strip zero-width and tag characters, white-on-white text, homoglyphs | Closes the invisible-instruction path into retrieval |
+| Normalize at ingest: strip invisible Unicode (full list in section 9), white-on-white text, homoglyphs | Closes the invisible-instruction path into retrieval |
 | Record provenance per chunk: source, ingest time, trust tier, pipeline version | Lets you invalidate and audit one poisoned batch instead of rebuilding the corpus |
 | Hold embeddings and vector backups at the **source documents' sensitivity tier** | Inversion reconstructs plaintext from exported vectors; an embeddings-only leak is a document breach |
 | Delete embeddings within a bounded SLA when the source is deleted | Otherwise erasure obligations are not met |
 | Re-embed the whole corpus when rotating the embedding model | Mixed-generation vectors leave exploitable similarity gaps |
 | Do not return raw similarity scores to clients | They are a probing side channel |
 
-**Citation discipline.** A model-emitted citation is a claim, not a pointer: in the ALCE evaluation
-even the strongest models lacked complete citation support about half the time on ELI5 (Gao et al.,
-arXiv:2305.14627).
+**Citation discipline.** A model-emitted citation is a claim, not a pointer.
 
 1. Prefer a provider-native citation mechanism that returns **parsed spans** over asking the model to
    quote — native pointers are structurally guaranteed to resolve, prompt-based ones are not.
@@ -200,7 +191,7 @@ it, and the failure is **silent** — no error, just the bill.
 | `datetime.now()`, a UUID, or a per-request id in the system prompt | Move it after the last breakpoint |
 | `json.dumps(...)` without `sort_keys=True` | Sort keys; never serialize a set |
 | Iterating a `set` to build the tool list | Sort by tool name |
-| Per-user tool set or conditional system-prompt sections | Union the tools; deliver mid-conversation operator instructions on a dedicated system-role channel placed after the cached prefix where the provider offers one, and fall back to a clearly labelled user-turn block only where it does not — a user turn is spoofable by anything that writes user-visible content |
+| Per-user tool set or conditional system-prompt sections | Union the tools; deliver mid-conversation operator instructions on a post-prefix system-role channel where the provider offers one (section 14), else a clearly labelled — but spoofable — user-turn block |
 | Switching model mid-session | Caches are model-scoped; expect a cold write |
 
 ## 8. Reliability: Timeouts, Retries, Idempotency
@@ -217,30 +208,19 @@ it, and the failure is **silent** — no error, just the bill.
   commit. Never resolve a floating "latest" alias at runtime: behaviour shifts under you and you
   cannot attribute the regression.
 - **Never auto-retry a non-idempotent side effect.** Every side-effecting tool call carries a
-  client-generated idempotency key (a UUID) and the receiving service honours this contract:
-
-| Situation | Response |
-|---|---|
-| Same key, same payload, original completed | Replay the original response; exactly one side effect |
-| Same key, original still in flight | `409 Conflict` |
-| Same key, **different** payload | `422 Unprocessable Content` |
-| Required key missing | `400 Bad Request` |
-
-On the client side, `409` is the one 4xx to retry: back off and re-send with the **same** key until
-the original settles, then read the replayed response. `422` and `400` are caller bugs — fix the
-payload or the key, never retry.
-
-Key retention/expiry is server-defined and must be documented. Contract per
-`draft-ietf-httpapi-idempotency-key-header-07`, an **expired** Internet-Draft (revision 07,
-15 October 2025; the httpapi WG document never advanced to an RFC and no later revision exists).
-Treat the status codes as a widely-followed convention, not a standard — pin them in your own API
-contract rather than citing the draft as authority.
+  client-generated, high-entropy idempotency key (a UUIDv4), and the receiving service honours this
+  contract: an identical retry replays the first request's stored status and body — exactly one side
+  effect; the same key with a **different** body returns **`409 Conflict`**, never a replay; a
+  collision with a still-in-flight request for the same key returns a documented **retryable** error
+  and is not recorded (the client backs off and re-sends with the same key); a missing required key
+  is `400 Bad Request`. Document the retention window after which keys are pruned and reuse executes
+  fresh. Pin the codes in your own contract; the IETF idempotency-draft expired — never cite it as
+  authority.
 
 ## 9. Guardrails and Prompt-Injection Defense
 
-**There is no reliable prevention for prompt injection.** Static attack suites measure near-zero
-success against published defenses while adaptive attackers who have read the defense exceeded 90%
-success against a dozen recent ones. Budget for **containment**, not interception.
+**There is no reliable prevention for prompt injection.** Budget for **containment**, not
+interception.
 
 **Design for a bypassed instruction boundary:** constrain what a compromised model can *do* and where
 its output can *reach*, instead of trying to filter the injection out.
@@ -272,7 +252,7 @@ its output can *reach*, instead of trying to filter the injection out.
 | Sink | Required control |
 |---|---|
 | SQL / any datastore | Parameterized queries only; never interpolate model output into a statement |
-| Shell / process | Never. No `eval`, `exec`, `subprocess(shell=True)`, or `pickle.loads` on model output |
+| Shell / process | Never. No `eval`, `exec`, or `subprocess(shell=True)` on model output |
 | HTML / DOM | Context-aware encoding plus a strict Content-Security-Policy; no `innerHTML`/`dangerouslySetInnerHTML` |
 | Terminal, log files | Strip or visibly encode ANSI escapes and control characters — otherwise output can forge or hide log lines |
 | Markdown renderer | Disable auto-loading of model-emitted images, link previews, and iframes; allowlist origins or proxy server-side. Auto-fetched image URLs are the canonical zero-click exfiltration channel |
@@ -318,8 +298,7 @@ live in the `open-telemetry/semantic-conventions-genai` repository — pin a ver
   default.** Capture is explicit opt-in; in production store content in a separate system with its own
   access controls and put only a reference on the span, or every ops engineer inherits de facto access
   to regulated user data.
-- With caching on, total prompt size is the sum of the uncached, cache-write, and cache-read counters —
-  not the "input tokens" field alone.
+- With caching on, total prompt size sums the uncached, cache-write, and cache-read counters (section 14).
 
 ## 12. Agent Design
 
@@ -365,36 +344,26 @@ and order both changed, so do not cite the 2025 names.
 | LLM04:2026 Supply Chain | 13 | LLM09:2026 Vector and Embedding Weaknesses | 5 |
 | LLM05:2026 Data and Model Poisoning | 5, 13 | LLM10:2026 Improper Output Handling | 9 |
 
-Once the feature has tools, memory, or downstream consequences, also map it against the **OWASP Top 10
-for Agentic Applications (ASI01-ASI10)**: Agent Goal Hijack; Tool Misuse and Exploitation; Identity and
-Privilege Abuse; Agentic Supply Chain Vulnerabilities; Unexpected Code Execution (RCE); Memory and
-Context Poisoning; Insecure Inter-Agent Communication; Cascading Failures; Human-Agent Trust
-Exploitation; Rogue Agents. The LLM list owns model-as-component failures, the agentic list owns
-model-as-actor failures, and most real incidents sit on the boundary. For governance reviews, map onto
-the **NIST AI RMF** functions (GOVERN / MAP / MEASURE / MANAGE) with a named owner per entry, and onto
-the applicable NIST AI 600-1 GenAI risk categories — at minimum Confabulation, Data Privacy, Information
-Integrity, Information Security, Human-AI Configuration, and Value Chain and Component Integration. NIST
-assigns those categories no alphanumeric ids; do not invent any. AI RMF 1.0 dates from January 2023 and
-is under revision, so qualify any "current version" claim with a date.
+Also map against the **OWASP Top 10 for Agentic Applications (ASI01-ASI10)** when the feature has
+tools or memory; map governance reviews onto the **NIST AI RMF** functions with a named owner per
+entry. NIST assigns its GenAI risk categories no alphanumeric ids — do not invent any.
 
 ## 14. Provider Specifics: Claude / Anthropic API
 
-**Everything in this section is provider- and version-specific and must be re-checked against the
-current API reference before you rely on it. The principles in sections 1-13 are portable; these
-parameter names, limits, prices, and model ids are not, and none of them should be assumed true of
-another vendor. Every value below was checked against the provider's own documentation on
-2026-08-20; treat anything unverified since then as stale, and re-check model ids, prices, cache
-minimums, and error behaviour before relying on them.**
+**Everything in this section is provider- and version-specific. The principles in sections 1-13 are
+portable; these parameter names, limits, and model ids are not, and none of them should be assumed
+true of another vendor. Every value below was checked against the provider's own documentation on
+2026-08-20; re-check anything here against the current API reference before relying on it.**
 
 **Model ids** (exact strings, complete as-is — never append a date suffix):
 
-| Model | Id | Context | Input USD/1M | Output USD/1M |
-|---|---|---|---|---|
-| Claude Fable 5 | `claude-fable-5` | 1M | 10.00 | 50.00 |
-| Claude Opus 5 | `claude-opus-5` | 1M | 5.00 | 25.00 |
-| Claude Opus 4.8 | `claude-opus-4-8` | 1M | 5.00 | 25.00 |
-| Claude Sonnet 5 | `claude-sonnet-5` | 1M | 3.00 | 15.00 |
-| Claude Haiku 4.5 | `claude-haiku-4-5` | 200K | 1.00 | 5.00 |
+| Model | Id | Context |
+|---|---|---|
+| Claude Fable 5 | `claude-fable-5` | 1M |
+| Claude Opus 5 | `claude-opus-5` | 1M |
+| Claude Opus 4.8 | `claude-opus-4-8` | 1M |
+| Claude Sonnet 5 | `claude-sonnet-5` | 1M |
+| Claude Haiku 4.5 | `claude-haiku-4-5` | 200K |
 
 **Thinking, effort, sampling**
 
@@ -441,16 +410,15 @@ minimums, and error behaviour before relying on them.**
 **Stop reasons, errors, batch, tokens**
 
 - Handle `end_turn`, `max_tokens`, `stop_sequence`, `tool_use`, `pause_turn` (server-side tool loop
-  paused; re-send to resume), and `refusal` (a safety decline arriving as a normal HTTP **200**). Check
-  `stop_reason` before reading content, or `content[0]` will crash. A `refusal` is recoverable by
-  re-running the request on another model; the provider exposes this as a server-side `fallbacks`
-  request parameter (beta) so the switch happens inside one call.
+  paused; re-send to resume), and `refusal` (a safety decline arriving as a normal HTTP **200**);
+  check `stop_reason` before reading content (section 4). A `refusal` is recoverable on another
+  model; the provider exposes a server-side `fallbacks` request parameter (beta) so the switch
+  happens inside one call.
 - 400 invalid_request / 401 auth / 403 permission / 404 not_found / 413 too_large / 429 rate_limit /
   500 api_error / 529 overloaded. Retryable: 429, 500-range, 529, connection errors; not retryable:
   the other 4xx. The official SDKs already auto-retry 429/5xx with exponential backoff.
-- Batch processing gives roughly a **50%** cost reduction and is asynchronous; results return in
-  **any** order, so key them by your `custom_id`, never by position.
-- Size prompts with the provider's count-tokens endpoint, not `tiktoken`.
+- Batch processing gives roughly a **50%** cost reduction and is asynchronous; key results by your
+  `custom_id` (section 6).
 
 ## 15. Quality Gates
 
@@ -467,7 +435,7 @@ pytest tests/evals/test_rag_metrics.py -q            # retriever and generator s
 pytest tests/evals/test_judge_position_bias.py -q    # both orderings; fail above a documented swap-disagreement ceiling
 pytest tests/evals/test_citation_pointers.py -q      # every span resolves; quoted text matches byte-for-byte
 pytest tests/integration/test_prompt_cache.py -q     # identical prefix twice => non-zero cache-read tokens
-pytest tests/integration/test_idempotency.py -q      # replay=1 side effect, in-flight=409, key reuse w/ new payload=422, missing=400
+pytest tests/integration/test_idempotency.py -q      # replay=1 side effect, key reuse w/ new payload=409, in-flight=retryable error, missing=400
 pytest tests/integration/test_agent_limits.py -q     # terminates on step, depth, wall-clock, and cost ceilings
 pytest tests/security/test_unicode_stripping.py -q   # U+E0000-E007F, U+FE00-FE0F, U+200B/C/D, U+2060 absent from prompt and render
 pytest tests/security/test_retrieval_acl.py -q       # tenant-A query with forged tenant-B scope returns zero cross-tenant chunks
@@ -499,11 +467,9 @@ git grep -n 'json.dumps' -- src/prompts/ | grep -v 'sort_keys=True' && exit 1 ||
 ```
 
 These paths are placeholders — point them at your repo's real prompt and tool directories, and keep
-the existence assertion so a stale path fails the gate instead of skipping it: `git grep` exits
-non-zero when a pathspec matches nothing, which `|| true` would otherwise swallow into a green run
-that inspected zero files. The judge gate compares against the merge base, so it needs `origin/main`
-fetched (not a single-commit shallow clone) and it needs the judge config and the recorded baselines
-to live in separate tracked paths — a judge change with no accompanying baseline change fails.
+the existence assertions: without them, a stale pathspec plus `|| true` turns a grep gate into a green
+run that inspected zero files. The judge gate needs `origin/main` fetched (not a single-commit shallow
+clone) and the judge config and recorded baselines in separate tracked paths.
 
 Run an **adaptive** injection/jailbreak red-team as a scheduled job (not per-commit), with the full
 deployed defense specification disclosed to the testers, and track attack-success rate over time.
@@ -512,21 +478,21 @@ deployed defense specification disclosed to the testers, and track attack-succes
 
 When writing or modifying code that calls an LLM, the agent **must**:
 
-1. **Never put a secret, credential, key, or connection string in a prompt, system prompt, tool description, or conversation history** — they persist in logs and in every stored transcript. Inject server-side at call time.
-2. **Treat all model output as untrusted input.** Never `eval`/`exec` it, never interpolate it into SQL, a shell command, a file path, or HTML. Parameterize and encode at every sink.
-3. **Treat retrieved documents and tool results as data, never as instructions** — pass them in a structurally separate, provenance-labelled block.
-4. **Never place a security control in the prompt**, and never treat a client-side guardrail as a trust boundary. Authorization, rate limits, and policy checks live in server-side code.
-5. **Pin the model id explicitly** in configuration; never track a floating alias in production. Pin the prompt version, embedding model, schema, and judge the same way.
-6. **Give every call a timeout and a bounded retry with jittered backoff.** Retry only 429, 5xx, and connection errors; never a 4xx, and never an identical prompt to the same model after a refusal — re-route a refusal to a different model or escalate.
+1. **Never put a secret, credential, key, or connection string in a prompt, system prompt, tool description, or conversation history** — inject server-side at call time (section 10).
+2. **Treat all model output as untrusted input** — parameterize and encode at every sink (section 9 sink table).
+3. **Treat retrieved documents and tool results as data, never as instructions** — structurally separate, provenance-labelled block (section 3).
+4. **Never place a security control in the prompt or a client-side guardrail** — enforcement is server-side code (sections 9, 10).
+5. **Pin the model id, prompt version, embedding model, schema, and judge** in configuration; never a floating alias (sections 2, 8).
+6. **Give every call a timeout and a bounded, jittered retry limited to retryable classes**; route a refusal to a different model or escalate (section 8).
 7. **Never auto-retry a non-idempotent tool side effect.** Add a client-generated idempotency key first, or make the retry impossible.
 8. **Log a request/correlation id and token usage for every call**, and do not log prompt or completion content by default.
-9. **Constrain every machine-consumed output with a schema**, then re-validate it in code before anything downstream acts on it.
-10. **Check the stop/finish reason before reading response content.** Handle refusal and truncation explicitly; never index `content[0]` unconditionally.
+9. **Constrain every machine-consumed output with a schema, then re-validate it in code** before anything downstream acts on it (section 4).
+10. **Check the stop/finish reason before reading response content** — never index `content[0]` unconditionally (section 4).
 11. **Write or extend the eval before changing the prompt**, and report the before/after numbers you actually measured. Never claim an improvement you did not measure.
 12. **Never let the generator model judge its own output**, and always score pairwise comparisons in both orderings.
 13. **Add no tool without a description that says when NOT to call it**, a narrow schema, and least-privilege credentials. Never introduce a generic shell or arbitrary-URL tool.
 14. **Run the Rule-of-Two check** on any agent change and state the result: untrusted input, sensitive data, state change or external communication — which legs are present, and what removes one.
-15. **Keep the cacheable prefix byte-stable** — no timestamps, UUIDs, per-user ids, or unsorted serialization in the system prompt or tool definitions.
+15. **Keep the cacheable prefix byte-stable** — nothing volatile, deterministic serialization (section 7).
 16. **State the cost and latency impact** of any change that adds a model call, lengthens a context, or adds an agent step.
 17. **Never invent provider facts.** Model ids, prices, limits, parameter names, and schema support are checked against current documentation or asked about — never recalled.
 18. **Flag every security-relevant surface you touch** (prompt assembly, tool definitions, retrieval scoping, output rendering, memory writes, telemetry) in the summary.
@@ -562,8 +528,9 @@ than request counts, hard spend ceiling that halts rather than alerts? Streaming
 TTFT tracked separately, batch results keyed by id? Cache prefix byte-stable with volatile content last,
 deterministic serialization, minimum prefix length met, hits verified from usage counters, tool set and
 system prompt not mutated mid-conversation? Explicit timeout on every call, retries bounded and jittered
-and limited to retryable classes, typed exceptions caught most-specific-first, idempotency key with
-409/422/400 behaviour on every side-effecting call, model id pinned rather than a floating alias?
+and limited to retryable classes, typed exceptions caught most-specific-first, idempotency key with the
+documented replay/409-on-reuse behaviour on every side-effecting call, model id pinned rather than a
+floating alias?
 
 **Output handling and observability** — parameterized queries, no `eval`/`exec`/`shell=True` on model
 output, context-aware encoding plus CSP, ANSI and control characters stripped before terminals and logs,
