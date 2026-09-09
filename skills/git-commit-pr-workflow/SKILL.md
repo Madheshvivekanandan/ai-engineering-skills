@@ -1,6 +1,6 @@
 ---
 name: git-commit-pr-workflow
-description: Standard for making commits and opening pull requests. Load BEFORE running git commit, git push, git rebase, git tag, or gh pr create; before writing a commit message, PR description, CHANGELOG entry, or review comment; and before choosing a branch name, merge strategy, or release version. Covers atomic commits, Conventional Commits, trunk-based branching, PR scope and description, review etiquette, rebase vs merge, semantic versioning, tags, changelogs, pre-commit hooks, and the rules an AI agent must follow when acting on a user's git history.
+description: Standard for making commits and opening pull requests. Load BEFORE running git commit, git push, git rebase, git tag, git switch -c, or gh pr create; before starting a new task, phase, or ticket that will produce commits; before writing a commit message, PR description, CHANGELOG entry, or review comment; before writing or editing a CI/CD workflow, branch protection ruleset, or deploy job that gates a pull request or a release; and before choosing a branch name, merge strategy, or release version. Covers atomic commits, Conventional Commits, trunk-based branching, one-branch-per-unit-of-work, PR scope and description, review etiquette, rebase vs merge, CI/CD pipelines and required checks, semantic versioning, tags, changelogs, pre-commit hooks, and the rules an AI agent must follow when acting on a user's git history.
 ---
 
 # Git Commit and Pull Request Workflow
@@ -34,13 +34,14 @@ The rules other skills defer to. They apply to every language and repo.
 6. **Stage deliberately.** Explicit paths, never `git add .` or `git add -A`.
 7. **Read the staged diff before committing.** `git diff --staged`, every time.
 8. **No commits unless the user asked.** Same for push, tag, force-push, and opening a PR.
+9. **One unit of work, one branch, one PR.** Cut the branch from current trunk before the unit's first commit; open the PR, merge it, delete the branch, then cut the next one (section 6).
 
 ## 3. Atomic Commits
 
 | Rule | Do | Do not |
 |---|---|---|
 | Scope | One issue, one commit | Five unrelated fixes in one commit |
-| Splitting | `git add --patch` to separate unrelated hunks in the same file (interactive: humans only — an agent with no TTY stages whole files instead, see section 14 rule 6) | Commit the whole working tree and call it indivisible |
+| Splitting | `git add --patch` to separate unrelated hunks in the same file (interactive: humans only — an agent with no TTY stages whole files instead, see section 15 rule 6) | Commit the whole working tree and call it indivisible |
 | Buildability | Every commit builds and its tests pass | "Broken midway, fixed in the next commit" |
 | Whitespace | `git diff --check` clean before every commit | Trailing-whitespace noise inflating the diff |
 | Tests | Test ships in the same commit as the code it covers | Tests bolted on in a follow-up |
@@ -139,6 +140,26 @@ via short-lived branches that exist only to carry review and CI.
 | Active branches in the repository | 3 or fewer | DORA |
 | Branch lifetime | hours, not days | DORA |
 | Integration to trunk | at least once per day | DORA |
+
+**One unit of work, one branch, one PR.** A unit is one logical change — a phase, a ticket, a
+reviewable slice — not a work session and not a whole feature. The loop, start to finish:
+
+```bash
+git switch "$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD | sed 's|^origin/||')"
+git pull --ff-only                          # start from current trunk, not from yesterday's
+git switch -c feat/tenant-scoped-orders     # cut BEFORE the unit's first commit
+# ... commit as many times as the work has logical steps (section 3) ...
+git push -u origin HEAD && gh pr create --fill
+# once the PR is merged:
+git switch - && git pull --ff-only && git branch -d feat/tenant-scoped-orders
+```
+
+Cut the next unit's branch from the freshly updated trunk. **Never carry a second unit of work on a
+branch whose PR is already open or merged**, and never let one branch accumulate every phase of a
+multi-phase task: that produces one unreviewable PR, no revert or bisect boundary per phase, and a
+conflict surface that grows with every phase. Many commits on one branch is correct; many units on
+one branch is not. If phase 2 truly cannot wait for phase 1 to merge, stack it — cut phase 2 from
+phase 1's branch, target the PR at phase 1's branch, and merge in order (section 7).
 
 - **Resist long-lived development branches.** Hide incomplete work behind a feature flag or
   branch-by-abstraction instead of parking it on a branch for three weeks. No code freezes, no
@@ -280,7 +301,7 @@ hand and produces duplicate commits with identical author, date, and message.
 - Clean up before you push, or while the pushed branch is still yours alone. Once anyone else may
   have based work on it, the only safe correction is a new commit. A human should run
   `git config pull.rebase true` and `git config rebase.autoSquash true` once during onboarding so this
-  is the default; an agent must not change git config (section 14 rule 15).
+  is the default; an agent must not change git config (section 15 rule 15).
 
 **Merge strategy — pick one per repository and encode it in settings.** Mixing them ad hoc makes
 history unreadable and `git log` filters unreliable.
@@ -372,6 +393,7 @@ git branch -r --sort=-committerdate | head    # active-branch audit
 # In CI (binding), and before merging
 pre-commit run --all-files                    # or --from-ref "$TRUNK" --to-ref HEAD
 gh pr view --json isDraft,reviewDecision,statusCheckRollup,body
+gh pr checks --required --watch --fail-fast   # block on the real required checks; exits non-zero if any fail
 
 # At release
 git describe --tags --exact-match HEAD        # the release commit is actually tagged
@@ -388,21 +410,69 @@ git describe --tags --exact-match HEAD        # the release commit is actually t
 - `git commit --no-verify` bypasses **both** the `pre-commit` and `commit-msg` hooks. Reserve it for a
   genuine emergency, say so in the PR, and never wire it into a script or alias.
 
-## 13. Emergencies
+## 13. CI/CD Pipeline
+
+Section 12's hooks are the local rehearsal; CI is the binding contract the PR is measured against.
+Define the pipeline in the repository, in version control, and make every gate **fail the run rather
+than warn**.
+
+| Trigger | Runs | Purpose |
+|---|---|---|
+| `pull_request` | lint, type check, tests, secret scan, build | Gates the merge |
+| `merge_group` | the same required checks | Merge queue re-validates against the real merge result |
+| `push` to trunk | the same checks, then publish artifacts / deploy to staging | Keeps trunk releasable |
+| `push` tag `v*` | build, sign, publish, deploy to production behind an environment gate | Release (section 11) |
+
+**A green PR proves nothing unless merging is actually blocked on it.** Encode that in a branch
+ruleset on trunk, not in team etiquette:
+
+| Ruleset rule | Setting |
+|---|---|
+| Require a pull request before merging | On; at least one approval, stale approvals dismissed on new commits |
+| Require status checks to pass before merging | On, naming each required check; require branches up to date, or run a merge queue |
+| Block force pushes, Restrict deletions | On |
+| Require linear history | On where the repo squash- or rebase-merges (section 10) |
+| Require signed commits | Only if every human *and bot* that pushes can sign (section 15 rule 16) |
+
+Pitfalls that silently void the pipeline:
+
+- **A skipped workflow never reports.** A required check skipped by a `paths`, `branches`, or
+  commit-message filter stays *pending* forever and the PR can never merge. Do not filter a required
+  workflow; if you must, add a same-named no-op job on the inverse filter that reports success.
+- **A merge queue needs the `merge_group` trigger.** A required workflow lacking it never runs for a
+  queued PR, and the queue stalls.
+- **`pull_request_target` runs with a read/write token even for a fork's PR.** Default to
+  `pull_request`; never check out or execute PR head code under `pull_request_target`.
+- **Pin every third-party action to a full commit SHA**, not a tag — a tag is mutable, so it is both a
+  supply-chain hole and a behaviour change with no commit recording it. Same reasoning as pinning
+  `rev` in section 12.
+- Set `permissions:` at the top of every workflow, starting from `contents: read` and adding only what
+  a job needs; anything you do not name then defaults to `none`.
+- Set `concurrency: {group: <workflow>-<ref>, cancel-in-progress: true}` on PR workflows, or a
+  superseded run keeps reporting a verdict on code that no longer exists.
+- Give every job a `timeout-minutes`; a hung job otherwise holds a runner to the platform limit.
+
+**Deploys.** Ship from trunk or a tag, never from a topic branch. Put each target behind a deployment
+`environment:` so its secrets, required reviewers, wait timer, and branch policy are enforced by the
+platform instead of by the workflow's own YAML. Authenticate to cloud providers with OIDC federation
+rather than long-lived secrets in the repo. Deploy the exact artifact CI built and tested — rebuilding
+at deploy time ships something no gate ever saw — and have a tested rollback path before you deploy.
+
+## 14. Emergencies
 
 A genuine emergency — a live production outage, a critical security hole, an urgent legal issue, a
 blocked major launch — may take a fast path: a change **minimal and scoped strictly to resolving the
 crisis**, reviewed thoroughly again afterwards. A soft deadline, a reviewer in another timezone,
 manager pressure, or a rollback that only fixes tests or the build is not an emergency. Gates still
-bind (section 14 rule 7).
+bind (section 15 rule 7).
 
-## 14. AI Agent Rules
+## 15. AI Agent Rules
 
 When operating on a repository, the agent **must**:
 
 1. **Never run `git commit`, `git push`, `git tag`, create a release, or open a PR unless the user asked for that specific action in this session** (section 2 rule 8). "The work looks finished" is not consent, committing is not permission to publish, and each action is a separate authorisation.
 2. **Never merge, approve, or close a pull request, and never merge into the default branch, unless the user asked for that specific action.** No `gh pr merge` — and never `--admin`, which bypasses branch protection — no `gh pr review --approve`, no `git merge` into trunk, no `gh pr close`. Approving your own or another agent's work is not review. Leaving a review comment on someone else's PR is a separate authorisation again: draft the comment for the user unless you were asked to post it.
-3. **Do not commit directly to the default branch unless that is demonstrably the repo's convention.** Resolve the default branch with `git symbolic-ref --quiet --short refs/remotes/origin/HEAD` and strip the `origin/` prefix; if it is unset, run `git remote set-head origin -a` or ask. Get the current branch separately with `git branch --show-current` (empty output means detached HEAD — stop and ask), then compare the two bare names. If they match, read `git log --oneline -20`: history made of PR merges means create and switch to a topic branch first; history of direct commits to trunk means say so and confirm before committing.
+3. **Cut a topic branch before the unit of work's first commit, and do not commit directly to the default branch unless that is demonstrably the repo's convention.** Resolve the default branch with `git symbolic-ref --quiet --short refs/remotes/origin/HEAD` and strip the `origin/` prefix; if it is unset, run `git remote set-head origin -a` or ask. Get the current branch separately with `git branch --show-current` (empty output means detached HEAD — stop and ask), then compare the two bare names. If they match, read `git log --oneline -20`: history made of PR merges means create and switch to a topic branch first; history of direct commits to trunk means say so and confirm before committing. Once a unit's PR is open or merged, the next unit starts on a new branch cut from updated trunk (section 6) — never keep appending phases to a branch you already offered for review.
 4. **Never rewrite any pushed or shared commit, and never rebase a branch you did not create in this session, without an explicit instruction naming that operation** — to undo a shared commit, use `git revert`.
 5. **Force-push only your own session branch, only on instruction, and only with `--force-with-lease`** — never bare `--force`.
 6. **Never use interactive git flags in a non-interactive session** — `rebase -i` without a no-op sequence editor, `add -i`, `add -p`, `commit` without `-m`, or anything that opens an editor or a pager. Where the workflow wants an interactive step, either avoid it (stage whole files rather than hunks), run it non-interactively by forcing a no-op sequence editor (`GIT_SEQUENCE_EDITOR=: git rebase --autosquash <trunk>`, or `GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash <trunk>` on Git older than 2.44 — section 12), or hand that step to the user.
@@ -418,7 +488,7 @@ When operating on a repository, the agent **must**:
 16. **Never enable, disable, or configure commit signing on the user's behalf** — no `commit.gpgsign`, no `-S`, no SSH signing key. If the branch requires signed commits, stage the work, say that signing is required, and hand the commit to the user.
 17. **When something is ambiguous — which branch, which merge strategy, whether to commit — ask.** Guessing here is expensive and, for history rewrites, unrecoverable.
 
-## 15. Review Checklist
+## 16. Review Checklist
 
 For an AI reviewer. Flag only real defects; cite `file:line` and state the failure scenario.
 
@@ -434,9 +504,11 @@ For an AI reviewer. Flag only real defects; cite `file:line` and state the failu
 
 **History safety** — does this branch force-push over shared commits? Any amend or rebase of published history? Is `--force` used where `--force-with-lease` belongs? Is a long-running branch about to be squash-merged with other branches cut from it? Is the repository's single merge strategy being followed? Was any conflict resolved mid-rebase taken wholesale from one side, and were the tests re-run before `--continue`? Was the PR merged, approved, or closed without an explicit request, or merged with `--admin` over a failing check?
 
-**Branching** — branch cut from current trunk? Short-lived, or has it been open for days? Is incomplete work behind a flag rather than parked on a branch? Are merged branches deleted?
+**Branching** — branch cut from current trunk before the first commit? One unit of work on it, or have several phases piled onto one branch that should have been several PRs? Short-lived, or open for days? Is incomplete work behind a flag rather than parked on a branch? Are merged branches deleted?
 
 **Secrets and artifacts** — any `.env`, key, token, credential, or connection string in the diff? Any generated files, lockfile churn, or large binaries that should be ignored? Is `.gitignore` updated for anything new that is generated?
+
+**CI/CD** — is every check the PR relies on actually required by a ruleset on trunk, or merely running? Is a required workflow `paths`/`branches`-filtered so it can hang pending? Does it carry `merge_group` if the repo uses a merge queue? `pull_request_target` used where `pull_request` would do, or checking out PR head under it? Third-party actions pinned to a SHA? Explicit least-privilege `permissions:`, `concurrency` with `cancel-in-progress`, and `timeout-minutes` set? Does the deploy ship the artifact CI tested, from trunk or a tag, behind an environment with a rollback path?
 
 **Gates** — did the hooks and CI actually run and pass, with output shown? Any `--no-verify`, `SKIP=`, `[skip ci]`, disabled rule, or skipped test used to force green? Are `.pre-commit-config.yaml` revs pinned? Do CI hooks match the local ones? Any `--autosquash` rebase on Git older than 2.44 without `-i` (flag silently ignored)?
 
