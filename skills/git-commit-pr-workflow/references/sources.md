@@ -40,6 +40,16 @@ Google Engineering Practices (each page retrieved individually):
 
 - [Trunk Based Development](https://trunkbaseddevelopment.com/) — the single-trunk model, resisting long-lived development branches, just-in-time release branches, feature flags and branch by abstraction; it gives no numeric branch-lifetime figure. [DORA — Trunk-based development](https://dora.dev/capabilities/trunk-based-development/) — the source of every number in section 6: three or fewer active branches, merge to trunk at least once a day, branches lasting no more than a few hours, no code freezes.
 
+- GitHub Docs: [GitHub flow](https://docs.github.com/en/get-started/using-github/github-flow) — the six-step branch → commit → PR → review → merge → delete-the-branch loop in section 6, short descriptive branch names, and the instruction to delete the branch after merge so nobody reuses it.
+
+**CI/CD**
+
+- GitHub Docs: [Available rules for rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets) — the exact rule names in section 13's ruleset table: require a pull request before merging, require status checks to pass before merging, require signed commits, require linear history, block force pushes, restrict deletions, require deployments to succeed before merging.
+- GitHub Docs: [Troubleshooting required status checks](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks) — a required workflow skipped by a `paths`, `branches`, or commit-message filter leaves its check *pending* and permanently blocks the merge, plus the documented same-name inverse-filter workaround; and the requirement to add the `merge_group` trigger to any workflow that is a required check under a merge queue.
+- GitHub Docs: [Workflow syntax for GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax) — `concurrency.group` / `cancel-in-progress` (default `false`), the top-level `permissions` key and the rule that unlisted permissions become `none` once any is set, `paths`/`paths-ignore` filters, and the `pull_request` versus `pull_request_target` distinction (`pull_request_target` gets a read/write `GITHUB_TOKEN` even from a public fork).
+- GitHub Docs: [Managing environments for deployment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments) — the `environment:` job key, environment secrets and variables, and the three deployment protection rules cited in section 13: required reviewers, wait timer, and deployment branch policies.
+- [`gh pr checks`](https://cli.github.com/manual/gh_pr_checks) — the `--required`, `--watch`, and `--fail-fast` flags used in the section 12 gate block.
+
 **Tooling and platform**
 
 - [semantic-release/commit-analyzer — `lib/default-release-rules.js`](https://github.com/semantic-release/commit-analyzer/blob/master/lib/default-release-rules.js) — the default rules (`breaking: true` → MAJOR, `type: feat` → MINOR, `type: fix` and `type: perf` → PATCH, and `revert: true` — the parser's parsed-revert flag, not a `revert:` type — → PATCH), which is why the release-effect column in section 5 describes the spec and not your pipeline.
