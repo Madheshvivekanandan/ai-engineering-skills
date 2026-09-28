@@ -1,4 +1,4 @@
--- Schema gate queries (see SKILL.md section 16).
+-- Schema gate queries (see SKILL.md section 14).
 -- Hand-written catalog constructions, not documented APIs: test each against your own
 -- database and confirm the hits by hand before wiring it into CI.
 
@@ -35,7 +35,7 @@ WHERE c.contype = 'f'
 
 -- Never-used indexes, largest first
 -- this also lists primary-key and unique-constraint indexes, which cannot be dropped
--- without dropping the constraint (see section 7), and on an idle or freshly restored
+-- without dropping the constraint, and on an idle or freshly restored
 -- database every index has zero scans -- read it against production statistics only
 SELECT relname, indexrelname, idx_scan,
        pg_size_pretty(pg_relation_size(indexrelid)) AS size
