@@ -24,7 +24,29 @@ assistant just uses the plain markdown body below it as static instructions.
 | [sql-schema-design-best-practices](skills/sql-schema-design-best-practices/SKILL.md) | Designing or evolving a relational schema: DDL, migrations, keys and constraints, money/timestamp types, indexing and EXPLAIN, zero-downtime changes, backfills, multi-tenancy, and partitioning. |
 | [api-contract-design-best-practices](skills/api-contract-design-best-practices/SKILL.md) | Designing or changing HTTP/REST API contracts: resource modeling, method and status-code semantics, problem+json errors, idempotency keys, pagination, versioning and breaking changes, ETags, rate limits, webhooks, and OpenAPI with CI gates. |
 | [docker-deployment-best-practices](skills/docker-deployment-best-practices/SKILL.md) | Writing or reviewing a Dockerfile, .dockerignore, Compose file, Kubernetes manifest, or a CI job that builds, scans, tags, deploys, or rolls back a container image. |
-| [git-commit-pr-workflow](skills/git-commit-pr-workflow/SKILL.md) | Committing, branching, or opening a pull request: atomic commits, Conventional Commits, trunk-based branching, PR scope and description, review etiquette, rebase vs merge, semantic versioning, tags, changelogs, and pre-commit hooks. |
+| [git-commit-pr-workflow](skills/git-commit-pr-workflow/SKILL.md) | Committing, branching, or opening a pull request: atomic commits, Conventional Commits, trunk-based branching, PR scope and description, review etiquette, rebase vs merge, CI/CD required checks, semantic versioning, tags, changelogs, and pre-commit hooks. |
+
+## Loading several skills together
+
+A real project loads several of these at once, for example Python, React, SQL, and git for a full-stack app. They are written for that:
+
+- **For capable models.** Each `SKILL.md` assumes a Sonnet-class model or stronger. It carries house decisions, thresholds, non-obvious gotchas, stack facts, and guardrails. It carries no textbook material, no philosophy sections, and no review checklist. [CONTRIBUTING.md](CONTRIBUTING.md) has the full keep/cut standard.
+- **Each rule lives in one skill.** Shared topics have an owner, and the other skills add only their own mechanics. SQL owns migration sequencing and Python adds the Alembic specifics. The API skill owns status codes and pagination, and Python adds the FastAPI wiring. Git owns commits and CI rules, so no other skill restates them.
+- **Long material loads on demand.** Full CI gate scripts, contract-test tables, and the Anthropic API reference live in `skills/<name>/references/`. `SKILL.md` names the moment to read each one.
+
+| Skill | `SKILL.md` size |
+|---|---|
+| python-best-practices | 19.9 KB (~5.0k tokens) |
+| react-best-practices | 15.5 KB (~3.9k tokens) |
+| sql-schema-design-best-practices | 21.8 KB (~5.5k tokens) |
+| git-commit-pr-workflow | 18.3 KB (~4.6k tokens) |
+| api-contract-design-best-practices | 19.6 KB (~4.9k tokens) |
+| docker-deployment-best-practices | 17.0 KB (~4.2k tokens) |
+| llm-application-best-practices | 17.7 KB (~4.4k tokens) |
+| n8n-workflow-best-practices | 6.9 KB (~1.7k tokens) |
+| Python + React + SQL + git together | 75.6 KB (~19k tokens) |
+
+Token counts are estimates at about four bytes per token.
 
 Every source consulted while writing these skills is recorded: per skill in
 `skills/<name>/references/sources.md`, and repo-wide — with provenance tiers and
@@ -63,17 +85,20 @@ these too. Just paste the body of `SKILL.md` (everything below the
 frontmatter) into that tool's equivalent file, e.g. `.cursorrules`,
 `AGENTS.md`, `CLAUDE.md`, or your system prompt. There's no auto-routing by
 task outside Claude Code, so it's always loaded rather than conditionally
-triggered — which is fine for a single, focused skill like this one.
+triggered — which is fine for a single, focused skill like this one. When a
+skill points at a file under its `references/` folder, copy that folder into
+the project too and adjust the pointer's path, so the assistant can open the
+file when the skill tells it to.
 
 ## Repository structure
 
 ```
 skills/
   <skill-name>/
-    SKILL.md              # required: frontmatter + guidance
+    SKILL.md              # required: frontmatter + guidance (lint budget: 24,000 bytes)
     references/
       sources.md          # provenance: every source, with verification dates
-      ...                 # optional: other docs the skill can point to
+      ...                 # optional: long material SKILL.md tells the model when to read
     scripts/              # optional: helper scripts the skill can invoke
 ```
 

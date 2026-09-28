@@ -5,80 +5,27 @@ description: Production standard for containerizing and shipping an application.
 
 # Docker and Deployment Best Practices
 
-Opinionated synthesis of the Docker build and BuildKit documentation, the OWASP Docker Security
-Cheat Sheet, NIST SP 800-190, the Twelve-Factor App, the OCI image spec annotations, and the
-Kubernetes docs on probes, resources, and Deployments. Applies to any OCI image built with
-Docker/BuildKit and run under Docker, Compose, or Kubernetes. When this document conflicts with an
-existing in-repo convention, follow the repo and say so.
+Applies to any OCI image built with Docker/BuildKit and run under Docker, Compose, or Kubernetes. When this conflicts with an in-repo convention, follow the repo and say so.
 
-## 1. Philosophy
+## 1. Base Images
 
-- **The image is the artifact.** Build once, promote the same bytes through every environment. Never
-  rebuild per environment.
-- **Config is injected, never baked** — only env vars and mounted secrets differ per environment.
-- **Containers die constantly.** Design for SIGTERM, crash-only restart, and at-least-once
-  redelivery — not for a graceful world.
-- **Rollback is a feature you design in**, not something you improvise during an incident.
+- Source: Docker Official Image, Verified Publisher, or Docker-Sponsored Open Source; otherwise your own trusted registry mirror.
+- Variant: the smallest that runs the app. `-slim` (glibc) by default, distroless-style for compiled binaries, Alpine only after you have tested musl compatibility (DNS resolution and native-extension builds differ).
+- Reference: `FROM <image>:<narrowest published variant tag>@sha256:<digest>`, never a bare major (`python:3`, `node:22`). Update digests deliberately via a bot PR.
+- Rebuild and redeploy weekly, and immediately for a critical base-image CVE.
 
-## 2. Hard Rules (non-negotiable)
+## 2. Dockerfile Authoring
 
-| Rule | Why | Wrong | Right |
-|---|---|---|---|
-| Never bake a secret into an image | `ENV` values persist into every running container and show in `docker inspect`; `ARG` values are not embedded in the image but are recorded in build history (`docker history`) and in `max`-mode provenance attestations. Deleting the file in a later layer does not remove it from earlier layers | `ARG NPM_TOKEN` / `ENV API_KEY=...` / `COPY .npmrc .` | `RUN --mount=type=secret,id=npm_token ...` at build; env var or mounted secret file at run |
-| Never run the app as root | Root in the container maps to real host privilege absent user namespaces | no `USER` instruction | explicit `USER 10001:10001` as the last identity change in the final stage |
-| Never deploy a floating tag | You cannot tell what is running and have no known artifact to roll back to | `image: app:latest` | `image: app:1.8.3` or `app@sha256:...` |
-| Pin base images by digest | A tag can be repointed at different content after you reviewed and scanned it | `FROM node:22.13-slim` (tag only, no digest) | `FROM node:22.13-slim@sha256:...` |
-| Install dependencies before copying source | Otherwise every source edit reinstalls the whole dependency tree | `COPY . .` then `npm ci` | `COPY package*.json ./` then `npm ci` then `COPY . .` |
-| Always ship a `.dockerignore` | Without it the context leaks `.git`, `.env`, and local credentials into the image | missing file | committed at the context root, and verified against the built image's **file listing** (`docker export` piped to `tar -tf`, section 12) — `docker history` cannot see this, and no build check detects a missing `.dockerignore` |
-| Handle SIGTERM and drain | Unhandled SIGTERM means every deploy drops in-flight requests | no signal handler; shell-form `CMD` | exec-form entrypoint plus an explicit shutdown handler |
-| Log to stdout/stderr as a stream | The platform owns aggregation and retention; in-container log files vanish on restart | writing `/var/log/app.log` plus logrotate | unbuffered structured lines on stdout |
-| Set explicit resource requests and limits | Without limits one container starves its neighbours | no `resources:` block | CPU + memory requests and limits on every container |
-| Act on scan findings | Unenforced scan output accumulates forever | scan step with `\|\| true` | non-zero exit on fixable HIGH/CRITICAL |
-
-## 3. Base Image Selection
-
-| Decision | Default | Notes |
-|---|---|---|
-| Source | Docker Official Image, Verified Publisher, or Docker-Sponsored Open Source; otherwise your own trusted registry mirror | Untrusted base images are a documented supply-chain risk |
-| Variant | Smallest that runs the app: `-slim` for glibc, distroless-style for compiled binaries, Alpine only when you have verified musl compatibility | Fewer packages means fewer CVEs to triage |
-| Reference | `FROM <image>:<tag>@sha256:<digest>` in production Dockerfiles | Update digests deliberately via a bot PR, not implicitly |
-| Runtime version | Pin the narrowest variant tag the image actually publishes, plus the digest; never a bare major (`python:3`, `node:22`) | Bare major tags move under you; where only a major-level variant tag is published, the digest is the only real pin |
-| Refresh cadence | Rebuild and redeploy weekly, and immediately for a critical base CVE | Never patch a running container; the change is lost on restart |
-
-Alpine caveat: musl changes DNS resolution and native-extension builds, so if you choose it you own
-the compatibility testing. The default recommendation is `-slim`.
-
-## 4. Dockerfile Authoring
-
-Order instructions from least to most frequently changing, because everything after the first
-changed layer is rebuilt: pinned `FROM`, system packages, non-root user creation, absolute
-`WORKDIR`, dependency manifests, dependency install, application source, then `USER` / `EXPOSE` /
-`HEALTHCHECK` / `ENTRYPOINT`.
-
-| Rule | Good | Bad |
-|---|---|---|
-| One `RUN` for update + install + cleanup | `RUN apt-get update && apt-get install -y --no-install-recommends curl=7.88.* && rm -rf /var/lib/apt/lists/*` | `RUN apt-get update` then a separate `RUN apt-get install` (freezes a stale index in cache) |
-| Pin package versions | `libpq5=15.*` | `libpq5` |
-| `COPY` for local files | `COPY --chown=10001:10001 app/ ./app/` | `ADD . .` |
-| `ADD` only for remote/Git sources, with a checksum | `ADD --checksum=sha256:... https://... /tmp/x` | unverified `ADD https://...` |
-| `chown` at copy time, numerically | `COPY --chown=10001:10001` | `RUN chown -R 10001:10001 /app` (duplicates the whole tree into a new layer); a named `--chown=app:app` also fails silently if the `COPY` runs before the user exists, and will not match a numeric `runAsUser` in Kubernetes |
-| `pipefail` for piped `RUN` | `SHELL ["/bin/bash", "-o", "pipefail", "-c"]` once per stage, or `RUN ["/bin/bash", "-c", "set -o pipefail && wget -O - https://... \| wc -l > /number"]` | a pipe whose first command's failure is silently swallowed (`/bin/sh -c` only checks the last command); plain `RUN set -o pipefail && ...` also **fails outright** on Debian-based `-slim` images, whose `/bin/sh` is dash and has no `-o pipefail` |
-| One concern per container | app image; separate DB and cron images | app + Postgres + cron + nginx in one image |
-
-Use `RUN --mount=type=cache,target=<pkg cache dir>` for package manager caches (pip, npm, apt, Go
-module cache) so rebuilds re-download only what changed and the cache never lands in a layer. Use
-`RUN --mount=type=bind` to read build-only files without creating a layer.
-
-On ephemeral CI runners the local layer cache is empty every run, so the ordering discipline above
-pays off only with an external cache:
-`docker buildx build --cache-from type=registry,ref=$REPO:buildcache --cache-to type=registry,ref=$REPO:buildcache,mode=max`.
-Treat the cache ref as build infrastructure, never as a deployable tag. Registry cache export and
-attestations (section 11) share a driver precondition: with the default `docker` driver both require the
-containerd image store, otherwise create a container builder first (`docker buildx create --use`).
-Provision the builder as an explicit CI step, not implicitly — on an ephemeral runner without one, the
-command above fails outright at cache export.
-
-### Multi-stage build (mandatory for any compiled or dependency-installing app)
+- Order from least to most frequently changing: pinned `FROM`, system packages, non-root user creation, absolute `WORKDIR`, dependency manifests, dependency install, application source, then `USER` / `EXPOSE` / `HEALTHCHECK` / labels / `ENTRYPOINT`.
+- One concern per image: no database, cron, or proxy beside the app.
+- Multi-stage is mandatory for any compiled or dependency-installing app. The final stage holds runtime dependencies, the application package, and the files it reads at runtime outside the package (prompt files, templates, migration config), copied as an explicit list; `COPY . .` belongs only in a builder stage.
+- The final stage creates its user and group explicitly, and its last identity change is `USER 10001:10001`: numeric, non-root, after every step that needs root.
+- `apt-get update`, `apt-get install -y --no-install-recommends`, and `rm -rf /var/lib/apt/lists/*` in one `RUN`. Pin OS package versions (`libpq5=15.*`) and install app dependencies from the lockfile (`npm ci`).
+- `COPY` for local files; `ADD` only for remote/Git sources, with `--checksum=sha256:...`.
+- `chown` at copy time, numerically: `COPY --chown=10001:10001`. `RUN chown -R` duplicates the tree into a new layer; a named `--chown=app:app` fails the build if the user does not exist yet and does not match a numeric `runAsUser`.
+- Piped `RUN`: `SHELL ["/bin/bash", "-o", "pipefail", "-c"]` once per stage. Plain `RUN set -o pipefail && ...` fails outright on Debian `-slim` images, whose `/bin/sh` is dash.
+- Package-manager caches (pip, npm, apt, Go) via `RUN --mount=type=cache,target=<cache dir>`; build-only files via `RUN --mount=type=bind` so they never land in a layer.
+- CI uses a registry cache (`--cache-from type=registry,ref=$REPO:buildcache --cache-to type=registry,ref=$REPO:buildcache,mode=max`); never deploy the cache ref. Registry cache export and attestations fail on the default `docker` driver unless it uses the containerd image store, so provision a builder as an explicit CI step (`docker buildx create --use --driver docker-container`).
 
 ```dockerfile
 # syntax=docker/dockerfile:1
@@ -100,431 +47,117 @@ USER 10001:10001
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
   CMD ["python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz').read()"]
-# LABEL org.opencontainers.image.* belongs here, in the last layer — see section 11.
+ARG GIT_SHA VERSION BUILD_DATE
+LABEL org.opencontainers.image.source="https://github.com/org/repo" \
+      org.opencontainers.image.revision="$GIT_SHA" \
+      org.opencontainers.image.version="$VERSION" \
+      org.opencontainers.image.created="$BUILD_DATE" \
+      org.opencontainers.image.base.name="python:3.12-slim" \
+      org.opencontainers.image.base.digest="sha256:<digest>"
 ENTRYPOINT ["python", "-m", "app.main"]
 ```
 
-The final stage must contain no compilers, no build toolchain, no dev dependencies, no test
-fixtures, and no `.git`. Note that the runtime stage copies the **application package only**, not the
-whole build context: `COPY . .` in a final stage ships whatever `.dockerignore` happened to miss.
-`.dockerignore` is the safety net, an explicit copy list is the actual control, and the whole-context
-copy belongs only where the point is cache ordering (section 2).
-
-The `HEALTHCHECK` timings above are a starting point, not a documented default — pick your own and
-state them explicitly, as section 8 requires.
-
 ### .dockerignore
 
-Commit it in the same change as the Dockerfile. At minimum:
+- Commit it at the build-context root, in the same change as the Dockerfile; a `.dockerignore` beside a Dockerfile outside the context root is silently ignored. Minimum entries: `.git`, `.env`, `.env.*`, `*.pem`, `*.key`, `node_modules`, `__pycache__`, `.venv`, `dist`, `build`, `coverage`, `tests`, `test`, `docs`, `*.md`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `Dockerfile*`, `docker-compose*.yml`, `.github`, `**/*.log`, `!README.md`.
+- Re-include anything packaging metadata reads at build time (`readme = "README.md"` in `pyproject.toml`, setuptools `long_description = file: README.md`), or the builder's dependency install fails with an opaque metadata error.
 
-```
-.git
-.env
-.env.*
-*.pem
-*.key
-node_modules
-__pycache__
-.venv
-dist
-build
-coverage
-tests
-test
-docs
-*.md
-.pytest_cache
-.mypy_cache
-.ruff_cache
-Dockerfile*
-docker-compose*.yml
-.github
-**/*.log
-!README.md
-```
-
-Re-include anything your packaging metadata reads at build time (`readme = "README.md"` in
-`pyproject.toml`, `long_description = file: README.md` in setuptools) — otherwise the dependency
-install fails inside the builder stage with an opaque metadata error.
-
-Then confirm nothing sensitive survived: only the image's file listing proves it, because `docker
-history` cannot see file contents (section 2):
-
-```bash
-cid=$(docker create <image>)
-docker export "$cid" | tar -tf - | grep -Ei '(^|/)(\.env($|\.)|\.git/|\.npmrc|\.netrc|\.aws/|id_(rsa|dsa|ecdsa|ed25519)$)|\.(pem|key|p12|pfx|jks)$'
-docker rm "$cid"
-```
-
-`docker export` works on shell-less and distroless-style images because it reads the filesystem from
-outside the container. Section 12 wires both checks in as failing gates.
-
-## 5. Secrets
+## 3. Secrets
 
 | Phase | Do | Never |
 |---|---|---|
-| Build | `RUN --mount=type=secret,id=<id>` (default target `/run/secrets/<id>`, or `env=` to expose as an env var for that RUN only), passed as `docker build --secret id=<id>,src=<path>` or `--secret id=<id>,env=<VAR>` | `--build-arg TOKEN=...`, `ENV TOKEN=...`, `COPY .netrc`, a token inside a `RUN` command line |
-| Private Git/dependency fetch | `--ssh default` with an SSH mount, or the predefined `GIT_AUTH_TOKEN` / `GIT_AUTH_HEADER` secrets | tokens embedded in a repository URL |
-| Runtime | Env vars from the orchestrator, or files mounted from a secret manager (Compose `secrets:` with `file:`, or `docker secret` when running Swarm — the `docker secret` CLI does not exist outside Swarm mode), read at startup | secrets in image `ENV` (section 2), secrets in committed manifests |
-| Rotation | Restart-to-reload, or re-read the mounted file on a signal | requiring an image rebuild to rotate a credential |
+| Build | `RUN --mount=type=secret,id=<id>` (file at `/run/secrets/<id>`, or `env=<VAR>` for that `RUN` only), passed as `--secret id=<id>,src=<path>` or `--secret id=<id>,env=<VAR>` | `ARG` / `--build-arg`, `ENV`, `COPY .npmrc` / `.netrc`, a token on a `RUN` line |
+| Private Git/dependency fetch | `--ssh default` with an SSH mount, or the predefined `GIT_AUTH_TOKEN` / `GIT_AUTH_HEADER` secrets | a token in a repository URL |
+| Runtime | orchestrator env vars or files mounted from a secret manager, read at startup; Compose `secrets:` with `file:` (`docker secret` exists only in Swarm mode) | image `ENV`; a value inside a committed manifest |
+| Rotation | restart to reload, or re-read the mounted file on a signal | a rebuild to rotate a credential |
 
-`docker build --check` reports `SecretsUsedInArgOrEnv`; treat that finding as a build failure. Run a
-secret scanner (for example Gitleaks or TruffleHog — check each tool's own flags) over the
-repository so a credential never reaches the build context.
+`ARG` is not safe for build secrets either: its values are recorded in `docker history` and `mode=max` provenance attestations.
 
-## 6. Configuration and Logging (Twelve-Factor)
+## 4. Configuration and Logging
 
-- All configuration comes from the environment: hostnames, credentials, feature flags, log level,
-  worker counts. Same image bit-for-bit across dev, staging, and production.
-- Strict build / release / run separation: a release is image digest + config, immutable and
-  individually addressable so it can be rolled back as a unit.
-- Processes are stateless and share nothing; anything that must persist goes to a database, object
-  store, or cache — never the container filesystem.
-- Logs go to stdout/stderr as unbuffered structured lines (section 2); set the runtime's unbuffered
-  flag (`PYTHONUNBUFFERED=1`, no output buffering in your logger) or lines are lost when the
-  container is killed.
-- Admin/one-off tasks (migrations, backfills) run as separate processes using the **same image and
-  config**, not from the app's startup path.
+- All configuration comes from the environment or mounted files, never baked into the image.
+- Processes are stateless: anything that must persist goes to a database, object store, or cache, never the container filesystem.
+- Logs are structured lines on stdout/stderr with runtime and logger buffering disabled (`PYTHONUNBUFFERED=1`) so a killed container loses none; no in-container log files or logrotate.
 
-## 7. PID 1, Signals, and Graceful Shutdown
+## 5. PID 1 and Graceful Shutdown
 
-| Rule | Detail |
-|---|---|
-| Exec form only | `ENTRYPOINT ["./app"]`. Shell form runs under `/bin/sh -c`, which does not pass signals and ignores `CMD` and `docker run` arguments, so `docker stop` degrades into SIGKILL. `docker build --check` flags this as `JSONArgsRecommended`. |
-| `ENTRYPOINT` + `CMD` split | `ENTRYPOINT` is the binary; `CMD` supplies default, overridable arguments. |
-| Entrypoint scripts end with `exec` | `exec "$@"` (or `exec ./app`) so the real process becomes PID 1 instead of the shell. |
-| Use an init when you spawn children | `docker run --init` runs an init that forwards signals and reaps processes; in Kubernetes use a process supervisor inside the image or avoid spawning unreaped children. |
-| `STOPSIGNAL` | Set it explicitly only if your application expects a signal other than the runtime default. |
+- Exec form only: `ENTRYPOINT ["./app"]` for the binary, `CMD` for default overridable arguments; shell form runs under `/bin/sh -c`, which does not forward signals, so `docker stop` ends in SIGKILL.
+- Entrypoint scripts end with `exec "$@"` so the app becomes PID 1.
+- An app that spawns children needs an init that forwards signals and reaps (`docker run --init`; in Kubernetes an init or supervisor inside the image), or must spawn no unreaped children.
+- On SIGTERM the app must: fail readiness immediately; stop accepting work (close the listener); finish in-flight requests within a deadline shorter than the grace period; for workers, return or NACK the in-flight job and release locks; flush logs and metrics; close DB pools and clients; exit 0.
+- Every job is reentrant and idempotent: containers also die without SIGTERM, so at-least-once redelivery must be safe.
+- Kubernetes removes endpoints asynchronously: add a `preStop` sleep of 5-15s matched to the proxy's propagation time. Use the native `Sleep` handler (verify your cluster version supports it); an `exec` sleep needs a shell and a `sleep` binary, which distroless-style images lack, so the hook fails (`FailedPreStopHook`) and the pod terminates without draining.
+- `terminationGracePeriodSeconds` = preStop delay + worst-case drain + 5s (default 30s, then SIGKILL).
 
-Shutdown sequence the application must implement:
+## 6. Health Checks and Probes
 
-1. Receive SIGTERM. Immediately flip readiness to failing.
-2. Stop accepting new work — close the listening socket / release the port.
-3. Finish in-flight requests, bounded by a deadline shorter than the grace period.
-4. Workers: return or NACK the in-flight job to the queue and release locks.
-5. Flush logs and metrics, close DB pools and client connections.
-6. Exit 0.
+- Liveness is shallow, in-process, and never checks a downstream dependency. Readiness may check a dependency the instance cannot serve without, never a shared external API whose outage would pull every replica at once.
+- Slow initialization gets a startup probe (liveness and readiness wait for it), not an inflated liveness `initialDelaySeconds` or `timeoutSeconds`.
+- Set probe timings explicitly; the default `timeoutSeconds: 1` fails healthy-but-busy containers. Start from `timeoutSeconds: 3`, `periodSeconds: 10`, `failureThreshold: 3` for readiness and `failureThreshold: 6` for liveness.
+- Use `httpGet` on dedicated routes: `/healthz` shallow, `/readyz` with dependencies.
+- Health endpoints are unauthenticated and return status only: no versions, connection strings, or stack traces.
+- Plain Docker/Compose: a `HEALTHCHECK` (or `--health-cmd`) calling the app's own health route with a short bounded command and no downloaded tooling, with interval, timeout, retries, and start period all explicit. `--start-period` defaults to `0s`, so a slow starter reports `unhealthy` through normal startup and blocks `depends_on: condition: service_healthy`.
+- Docker takes no action on an unhealthy container (restart policies react to exit codes only): restart-on-unhealthy needs the app to exit non-zero itself or an orchestrator.
 
-- Make every job **reentrant and idempotent**: containers also die without warning, so at-least-once
-  redelivery must be safe.
-- In Kubernetes, endpoint removal is asynchronous. Add a `preStop` hook that sleeps 5-15s (matched
-  to your proxy's propagation time) so SIGTERM does not arrive while the load balancer is still
-  routing new connections. Prefer Kubernetes' native `Sleep` handler: the `exec` form requires a
-  shell and a `sleep` binary, which distroless-style bases do not ship — the hook fails
-  (`FailedPreStopHook`) and the pod terminates immediately, losing the drain. Verify the handler's
-  field shape against your cluster's Pod API reference.
-- Set `terminationGracePeriodSeconds` to preStop delay + worst-case drain time + 5s headroom. The
-  default is 30s; after it expires the container is SIGKILLed.
-- Target startup in seconds, not minutes. Slow starts stall rolling updates and autoscaling.
+## 7. Resource Limits
 
-Verify, do not assume:
+- CPU and memory requests and limits on every container; a limit with no request implies an equal request.
+- Size memory from measured peak RSS under representative load plus headroom. Be cautious with tight CPU limits: they throttle, producing latency spikes rather than errors.
+- Untrusted or user-supplied workloads also cap processes and descriptors: `--pids-limit 256`, `--ulimit nproc=...`, `--ulimit nofile=...`.
+- Bounded restarts: `--restart=on-failure:3` or a controller's backoff; a `CrashLoopBackOff` pages rather than looping silently.
 
-```bash
-docker run -d --name t <image>
-docker stop -t 30 t
-code=$(docker inspect -f '{{.State.ExitCode}}' t)
-docker logs t 2>&1 | grep -q '<your shutdown log line>' \
-  || { echo "no drain observed: SIGTERM handler did not run" >&2; exit 1; }
-[ "$code" = 0 ] || { echo "exit $code -- 143: killed by the default SIGTERM disposition, no handler installed; 137: SIGKILL after the grace period, signal never reached the process" >&2; exit 1; }
-```
-
-## 8. Health Checks and Probes
-
-| Signal | Question it answers | Consequence of failure | Depth |
-|---|---|---|---|
-| Startup probe | "Has initialization finished?" | suspends liveness/readiness until it passes | cheap in-process check |
-| Readiness | "Can this instance serve traffic now?" | removed from the load balancer's endpoints | may check required dependencies |
-| Liveness | "Is this process wedged beyond recovery?" | container is **restarted** | shallow, dependency-free, in-process only |
-
-- **Never let a downstream dependency fail liveness.** A deep liveness check turns a database blip
-  into a cluster-wide restart storm. Put dependency checks in readiness.
-- Use a startup probe for slow-initializing apps instead of inflating liveness `initialDelaySeconds`
-  or `timeoutSeconds`.
-- Set probe timing explicitly. Defaults are `initialDelaySeconds: 0`, `periodSeconds: 10`,
-  `timeoutSeconds: 1`, `successThreshold: 1`, `failureThreshold: 3` — a 1s timeout marks
-  healthy-but-busy containers as failed. Recommended starting point: `timeoutSeconds: 3`,
-  `periodSeconds: 10`, `failureThreshold: 3` for readiness; `failureThreshold: 6` for liveness.
-- Handler types: `exec`, `httpGet` (success is HTTP 200-399), `tcpSocket`, `grpc`. Prefer `httpGet`
-  on a dedicated route (`/healthz` shallow, `/readyz` with dependencies), gated on real checks
-  rather than a fixed `sleep`.
-- In a plain Docker/Compose deployment add a `HEALTHCHECK` (or `--health-cmd`) that calls the app's
-  own health route with a short bounded command and no downloaded tooling. Set `--health-interval`,
-  `--health-timeout`, `--health-retries`, and `--health-start-period` explicitly rather than relying
-  on defaults. `--start-period` defaults to `0s`, so without it a slow-starting container is reported
-  `unhealthy` throughout normal startup, which then blocks the `service_healthy` Compose gating
-  described below. It is the plain-Docker analogue of the startup probe above. **Docker
-  itself takes no action on an unhealthy container** — the status is only reported (`docker ps`,
-  `docker inspect --format '{{.State.Health.Status}}'`), and restart policies react to exit codes,
-  not health. Use `HEALTHCHECK` to gate Compose `depends_on: condition: service_healthy` and to feed
-  external monitoring; if you need restart-on-unhealthy, the app must exit non-zero itself or an
-  orchestrator must own the decision. The restart and endpoint-removal consequences in the table
-  above are Kubernetes behaviour.
-- Health endpoints must be unauthenticated but leak nothing: status only, no versions, no connection
-  strings, no stack traces.
-
-## 9. Resource Limits
-
-- Set **both requests and limits** for CPU and memory on every container. Requests drive scheduling;
-  limits are enforced at runtime. A limit with no request implies an equal request.
-- Memory limits are enforced by **OOM kill**; CPU limits are enforced by **throttling**. Size memory
-  from observed peak RSS plus headroom; be cautious with tight CPU limits, which produce latency
-  spikes rather than errors.
-- Measure before you set: run the container under representative load and record your project's own
-  peak RSS and CPU baseline in the repo. Do not copy another service's numbers. Docker equivalents:
-  `-m 512m --cpus 0.5`.
-- For containers running untrusted or user-supplied workloads, also cap process and descriptor
-  counts: `--pids-limit 256`, `--ulimit nproc=...`, `--ulimit nofile=...`.
-- Use `--restart=on-failure:3` (or a controller's backoff) rather than unbounded restarts; a
-  repeating crash-restart (`CrashLoopBackOff`) should page, not loop silently.
-
-## 10. Runtime Hardening
+## 8. Runtime Hardening
 
 | Control | Docker | Kubernetes |
 |---|---|---|
-| Non-root | `--user 10001:10001` (image already declares `USER`) | `runAsNonRoot: true`, `runAsUser: 10001` |
+| Non-root | `--user 10001:10001` | `runAsNonRoot: true`, `runAsUser: 10001` |
 | Read-only root filesystem | `--read-only --tmpfs /tmp` | `readOnlyRootFilesystem: true` + `emptyDir` volumes |
 | Drop capabilities | `--cap-drop all --cap-add <needed>` | `capabilities: {drop: ["ALL"], add: [...]}` |
 | No privilege escalation | `--security-opt=no-new-privileges` | `allowPrivilegeEscalation: false` |
 | Never privileged | never `--privileged` | `privileged: false` |
 | Syscall filtering | keep the default seccomp profile; add AppArmor/SELinux where supported | `seccompProfile: {type: RuntimeDefault}` |
-| Never expose the daemon | never mount `/var/run/docker.sock`; never expose the daemon over TCP; prefer rootless mode | no `hostPath` on the socket |
-| Network exposure | publish to a specific interface (`-p 127.0.0.1:8000:8000`); use user-defined networks, not the default bridge | Services + NetworkPolicy; do not use `hostNetwork` |
-| Volumes | mount read-only where possible (`:ro`) | `readOnly: true` on volumeMounts |
+| Never expose the daemon | never mount `/var/run/docker.sock` or expose the daemon over TCP; prefer rootless mode | no `hostPath` on the socket |
+| Network exposure | publish to a specific interface (`-p 127.0.0.1:8000:8000`); user-defined networks, not the default bridge | Services + NetworkPolicy; no `hostNetwork` |
+| Volumes | read-only where possible (`:ro`) | `readOnly: true` on volumeMounts |
 
-Docker's published ports can bypass host firewall rules, so binding `0.0.0.0` on a public host
-silently exposes the service. `--read-only` needs a `tmpfs` for `/tmp` and every other path the
-runtime writes to, or the container crashes at startup — smoke test the hardened configuration in CI
-rather than shipping it untested.
+- Docker-published ports bypass host firewall rules, so binding `0.0.0.0` on a public host silently exposes the service.
+- `--read-only` needs a `tmpfs` for `/tmp` and every other path the runtime writes, or the container crashes at startup.
 
-## 11. Tagging, Labels, and Provenance
+## 9. Tagging, Labels, and Provenance
 
-- Tag every image with an immutable, traceable identifier. Minimum set: `<repo>:<git-sha>` always,
-  plus `<repo>:<semver>` for releases. Optionally a moving `:main` for convenience, never for
-  deployment.
-- **Deploy the digest or an immutable tag.** In Kubernetes an omitted `imagePullPolicy` defaults to
-  `Always` for `:latest` or for an omitted tag, and to `IfNotPresent` for any other tag or for a
-  digest reference. Either way a mutable tag means nodes
-  can run different code under one name — and with `IfNotPresent` a node that already cached the tag
-  never picks up the new content. Deploy a digest and the question disappears.
-- Stamp OCI pre-defined annotation labels so any consumer can trace the running image back to a
-  commit without external bookkeeping:
+- Tag every image `<repo>:<git-sha>`, plus `<repo>:<semver>` for releases.
+- Deploy only a digest or an immutable tag: never `:latest` or a branch tag in a manifest, Compose file, or CI deploy step. An omitted `imagePullPolicy` is `Always` only for `:latest` or no tag and `IfNotPresent` otherwise, so a node that cached a mutable tag keeps running the old content.
+- OCI labels (section 2 example) go in the last layer so per-build values do not bust the cache; CI passes `GIT_SHA`, `VERSION`, and `BUILD_DATE` as build args, never hardcoded in the Dockerfile.
+- Build with `--sbom=true --provenance=mode=max` and push; the registry keeps the attestations. Verify with `docker buildx imagetools inspect <image> --format '{{ json .Provenance }}'`.
+- Sign released images and verify signature plus policy at admission, pulling only from your own trusted registry. Pick one signer (Sigstore/cosign or Notation) and enforce it in the admission path; not Docker Content Trust, which Docker retires in December 2026.
 
-```dockerfile
-# Non-secret build args only — anything in section 5 must never travel this way.
-ARG GIT_SHA
-ARG VERSION
-ARG BUILD_DATE
-LABEL org.opencontainers.image.source="https://github.com/org/repo" \
-      org.opencontainers.image.revision="$GIT_SHA" \
-      org.opencontainers.image.version="$VERSION" \
-      org.opencontainers.image.created="$BUILD_DATE" \
-      org.opencontainers.image.title="payments-api" \
-      org.opencontainers.image.licenses="Apache-2.0" \
-      org.opencontainers.image.base.name="python:3.12-slim" \
-      org.opencontainers.image.base.digest="sha256:..."
-```
+## 10. CI Gates
 
-Declare the `ARG`s or the values expand to empty strings and trip the `UndefinedVar` check that the CI
-gates fail on. CI supplies them:
-`--build-arg GIT_SHA=$(git rev-parse HEAD) --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)`.
-Alternatively `docker buildx build --label org.opencontainers.image.revision=...` sets them without a
-Dockerfile edit. Never hardcode a version or timestamp in the Dockerfile — it goes stale on the next
-build. Put the `LABEL` in the **last** layer so per-build values do not bust the cache.
+Before writing or reviewing the image CI job, read references/ci-gates.sh (the full gate script). Every gate exits non-zero on failure; never `|| true`, a severity downgrade, or a blanket ignore file: fix the finding or escalate it with the scanner output. The gates check:
 
-- Generate SBOM and provenance attestations with the build (section 12 command). Pushing to a
-  registry always preserves them; the containerd-store/driver precondition is in section 4. Verify
-  with `docker buildx imagetools inspect <image> --format '{{ json .Provenance }}'`.
-- Sign released images and verify signature plus policy at admission, pulling only from your own
-  trusted registry. Tool choice (Sigstore/cosign, Notation, Docker Content Trust) is
-  environment-dependent; pick one and enforce it in the admission path.
+- Dockerfile: `docker build --check` and `hadolint`, with check warnings escalated on the build that ships (`# check=error=true` or `--build-arg BUILDKIT_DOCKERFILE_CHECK=error=true`).
+- Build context: no secrets (`gitleaks dir .`; `gitleaks detect --no-git` is the deprecated form).
+- One build, the one that ships: pushed as `$REPO:$GIT_SHA` (the push keeps the attestations), then pulled back for the local-store gates. A `pull_request` run gates a `--load` build instead, with no `--push`, `--cache-to`, or attestations: PR code never writes to the release registry or its cache.
+- Vulnerabilities: fail on fixable HIGH/CRITICAL (`trivy image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed`, `docker scout cves --exit-code --only-severity critical,high`); `docker scout quickview` has no `--exit-code` and never gates. Plus an image secret scan (`trivy image --scanners secret`).
+- User: `Config.User` is non-empty and a non-zero numeric UID; hadolint cannot prove a `USER` was declared.
+- Contents: no sensitive file in the image's file listing (`docker export` piped to `tar -tf`, which works on shell-less images; `docker history` cannot see file contents), and no credential in history `ARG`/`ENV` assignments (anchor the grep to them: a `RUN` using a secret mount legitimately shows `--mount=type=secret` in history).
+- Hardened runtime: the image serves a real `/healthz` request under the section 8 flags plus pids, memory, and CPU limits; a `--version` check exits before the runtime opens its log, pid, or cache paths, so it passes with a missing `tmpfs`.
+- Manifests: `kubesec scan` or `kubeaudit` for the section 7 and 8 controls; `conftest test k8s/` (OPA) to block images without a digest or missing probes/limits; `docker-bench-security` and `kube-bench` for CIS Benchmark conformance on hosts and clusters.
+- Suppressions: review the unfixed set on a schedule; every suppression has an owner and an expiry date.
 
-## 12. CI Gates
+Run under `set -euo pipefail` and write every gate as `if <cmd>; then exit 1; fi` over output already materialised in a file or variable: `!`-negated commands are exempt from `set -e`, and a negated pipeline under `pipefail` turns a broken producer (unset `$REPO`, image not present locally) into a pass.
 
-Every gate must fail the pipeline, not print a warning. Check each tool's own `--help` before
-pasting; flags change.
+## 11. Deployment and Rollback
 
-```bash
-set -euo pipefail   # without this a failing gate below is only a message in the log
+- Promote the digest that passed the gates in a lower environment; never rebuild per environment.
+- Roll out through a controller with a surge-and-drain strategy, applying manifests from version control; never mutate a bare Pod or patch a running container.
+- Set explicitly: `maxSurge: 25%` and `maxUnavailable: 0` for a stateless HTTP service; `minReadySeconds` 10-30s so a pod that crashes soon after becoming ready halts the rollout; `progressDeadlineSeconds`; a `revisionHistoryLimit` that allows rolling back more than one release.
+- Rollback is one command documented in the runbook (`kubectl rollout undo deployment/<name> --to-revision=<n>`, confirmed with `kubectl rollout status deployment/<name> --timeout=5m`), and the previous artifact stays identifiable and pullable.
+- Migrations and other admin tasks run as a separate one-off process (a Kubernetes Job) with the same image and config, never from the app's startup path. A release's migrations leave the schema usable by the previous release (expand/contract), or `rollout undo` is unusable; an app rollback leaves the schema in place.
 
-docker build --check .                      # checks only, no image; exits non-zero if any violation is reported
-hadolint Dockerfile                         # lint: last USER not root (DL3002), pinned versions, no ADD
-gitleaks dir .                              # no secrets in the build context (the deprecated form was `gitleaks detect --no-git`)
+## 12. Agent Rules
 
-# Provision the builder explicitly: attestations and the registry cache need a non-default
-# driver, or the containerd image store on the `docker` driver (sections 4 and 11).
-docker buildx create --use --name ci --driver docker-container
-
-# One build, and it is the one that ships. The build arg escalates check warnings to
-# failures here too; a Dockerfile carrying `# check=error=true` needs no build arg at all.
-docker buildx build --build-arg "BUILDKIT_DOCKERFILE_CHECK=error=true" \
-  --cache-from "type=registry,ref=$REPO:buildcache" \
-  --cache-to "type=registry,ref=$REPO:buildcache,mode=max" \
-  --sbom=true --provenance=mode=max --push -t "$REPO:$GIT_SHA" .
-docker pull "$REPO:$GIT_SHA"                # --push keeps attestations; pull it back for the local-store gates below
-
-trivy image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed "$REPO:$GIT_SHA"
-trivy image --scanners secret --exit-code 1 "$REPO:$GIT_SHA"   # secret scanning is on by default for `trivy image`; this isolates it as its own failing gate
-docker scout cves --exit-code --only-severity critical,high "$REPO:$GIT_SHA"   # gate: exit 2 on findings
-docker scout quickview "$REPO:$GIT_SHA"     # informational only: quickview has no --exit-code, it never fails the build
-
-test -n "$(docker image inspect --format '{{.Config.User}}' "$REPO:$GIT_SHA")"   # this, not hadolint, is what proves a USER was declared at all
-docker image inspect --format '{{.Config.User}}' "$REPO:$GIT_SHA" \
-  | grep -Eq '^[1-9][0-9]*(:[0-9]+)?$'      # ...and that it is a non-zero numeric UID, as agent rule 3 requires
-
-# Contents, not history: history records instruction text and ARG values, never file contents,
-# so only a file listing can prove a `COPY . .` did not sweep in `.env` or `.git`.
-files=$(mktemp)
-cid=$(docker create "$REPO:$GIT_SHA")
-docker export "$cid" | tar -tf - > "$files"
-docker rm "$cid"
-if grep -Eiq '(^|/)(\.env($|\.)|\.git/|\.npmrc|\.netrc|\.aws/|id_(rsa|dsa|ecdsa|ed25519)$)|\.(pem|key|p12|pfx|jks)$' "$files"; then
-  echo "sensitive file shipped inside the image" >&2; exit 1
-fi
-hist=$(mktemp)
-docker history --no-trunc --format '{{.CreatedBy}}' "$REPO:$GIT_SHA" > "$hist"   # a broken producer aborts here under set -e
-if grep -Eiq '^(ARG|ENV) [^=]*(secret|token|password|api[_-]?key)[^=]*=' "$hist"; then
-  echo "possible credential baked into ARG/ENV" >&2; exit 1
-fi
-
-# Hardened-runtime smoke test: the app must actually bind and serve under the flags.
-cid=$(docker run -d -p 127.0.0.1:18000:8000 --read-only --tmpfs /tmp --cap-drop all \
-  --security-opt=no-new-privileges --pids-limit 256 -m 512m --cpus 0.5 \
-  "$REPO:$GIT_SHA")
-trap 'docker rm -f "$cid" >/dev/null 2>&1' EXIT
-for _ in $(seq 30); do
-  curl -fsS http://127.0.0.1:18000/healthz >/dev/null && break || sleep 1
-done
-curl -fsS http://127.0.0.1:18000/healthz >/dev/null   # served a request with a read-only root and only /tmp writable
-[ "$(docker inspect -f '{{.State.Running}}' "$cid")" = true ]   # still up under the hardened flags
-```
-
-Write every gate as `if <command>; then exit 1; fi` over output you have already materialised (the
-`$files`/`$hist` pattern above): `!`-negated commands are exempt from `set -e`, and under `pipefail` a
-negated pipeline turns a *broken* producer — an unset `$REPO`, an image not present locally — into a
-pass. The hardened-runtime smoke test must reach a real serving state: invoking the image with
-`--version` short-circuits before the runtime opens any log, pid, or cache path, so a missing `tmpfs`
-mount sails through.
-
-Named `docker build --check` rules worth knowing: `SecretsUsedInArgOrEnv`, `JSONArgsRecommended`,
-`WorkdirRelativePath`, `UndefinedVar`, and `CopyIgnoredFile` — which fires when a `COPY`/`ADD` targets
-a path your `.dockerignore` excludes, i.e. an over-broad ignore pattern silently breaking a copy. The
-set grows with BuildKit releases — read the current reference rather than assuming a fixed list.
-
-Scope the history gate to `ARG`/`ENV` assignments. A `RUN` that consumes a file-mounted secret
-necessarily has `--mount=type=secret` and `/run/secrets/<id>` in its history entry, so an unanchored
-case-insensitive match over full history fails the very pattern section 5 requires.
-
-Manifest and cluster gates: `kubesec scan` or `kubeaudit` for `runAsNonRoot`,
-`readOnlyRootFilesystem`, `allowPrivilegeEscalation`, dropped capabilities and resource limits;
-`conftest test k8s/` (OPA) to block images without a digest or missing probes/limits;
-`docker-bench-security` and `kube-bench` for CIS Benchmark conformance on hosts and clusters.
-
-`--ignore-unfixed` is the pragmatic default so the gate stays actionable, but review the unfixed set
-on a schedule. Every suppression carries an expiry date and an owner.
-
-## 13. Deployment and Rollback
-
-- Roll out through a controller with a surge-and-drain strategy. Never mutate a bare Pod or patch a
-  running container in place; only a controller can reschedule and step a change out gradually while
-  readiness gates traffic.
-- A Deployment rollout triggers only on `.spec.template` changes (an image tag or digest change
-  counts); scaling does not roll.
-- Set `maxSurge` and `maxUnavailable` explicitly rather than relying on defaults. Safe starting
-  point for a stateless HTTP service: `maxSurge: 25%`, `maxUnavailable: 0`.
-- Set `minReadySeconds` above zero (10-30s) so a pod that crashes shortly after becoming ready does
-  not let the rollout continue.
-- Bound failure with `progressDeadlineSeconds`, keep `revisionHistoryLimit` large enough to roll
-  back more than one release, and apply manifests from version control rather than a local file.
-- Rollback must be one command, documented in the runbook:
-
-```bash
-kubectl rollout status  deployment/<name> --timeout=5m
-kubectl rollout history deployment/<name>
-kubectl rollout undo    deployment/<name> --to-revision=<n>
-```
-
-- **Migrations must be backward compatible (expand/contract) — or the rollback command is unusable —
-  and run as a separate one-off process** (a Job using the same image and config), never from the
-  app's startup path: N replicas race and a failed migration becomes a crash loop. The previous
-  artifact must remain deployable.
-- Promote a digest that already passed the gates in a lower environment; do not rebuild for
-  production.
-
-## 14. AI Agent Rules
-
-When writing or modifying container, deployment, or CI files, the agent **must**:
-
-1. **Read the existing Dockerfile, `.dockerignore`, CI workflow, and manifests first** and match
-   their patterns, base images, and naming. The repo's convention beats this document.
-2. **Never write a secret into a Dockerfile, image layer, `ENV`, build arg, or committed manifest** (sections 2, 5), and say in the summary where the value must come from.
-3. **Always end the final stage with a `USER` naming a non-root numeric UID**, creating that user and group explicitly (sections 2, 10).
-4. **Always pin base images by digest** (section 2); if you do not have the digest, leave a clearly marked placeholder — never invent a `sha256` value.
-5. **Never emit `:latest`** in a deploy manifest, Compose file, or CI deploy step (sections 2, 11).
-6. **Create or update `.dockerignore` in the same change** as any new Dockerfile.
-7. **Use exec-form `ENTRYPOINT`/`CMD`**, and end any entrypoint script with `exec "$@"`.
-8. **Add or verify SIGTERM handling** whenever you touch the server or worker entrypoint; if the app
-   has none, say so explicitly rather than assuming the platform handles it.
-9. **Set requests, limits, and explicit probe timings** on every container you add; do not leave
-   probe defaults implicit.
-10. **Never mount the Docker socket, never use `--privileged`**, and never disable seccomp to make
-    something work — report the blocker instead.
-11. **Do not weaken a gate to get green** — no `|| true`, no `--severity` downgrades, no blanket ignore files; fix the finding or escalate it with the scanner output.
-12. **Never claim a build, scan, or deploy succeeded without running it** and pasting the real
-    output. If you cannot run it in this environment, say so.
-13. **Never invent version numbers, digests, CVE IDs, image sizes, or tool flags.** If a flag or
-    default is uncertain, say it must be checked against the tool's `--help` or current docs.
-14. **Flag every security-relevant change** (user, capabilities, mounted paths, published ports,
-    network policy, secret handling) in the summary.
-15. **Keep changes minimal.** No drive-by base image bumps, no reformatting unrelated manifests, no
-    new dependencies or tools without saying why.
-
-## 15. Review Checklist
-
-For an AI reviewer. Flag only real defects; cite `file:line` and state the failure scenario.
-
-**Secrets** — any secret in `ARG`, `ENV`, a `COPY`ed file, a `RUN` command line, or a committed
-manifest? Build secrets using `--mount=type=secret`? Does `docker history` contain a token, and does
-the image's **file listing** contain `.env`, `.git`, `.npmrc`, or a key file (history alone cannot
-answer this)? Is a secret scanner running in CI? Is rotation possible without a rebuild?
-
-**Image identity** — base image pinned by digest? Package versions and lockfiles pinned? Deploy
-referencing an immutable tag or digest rather than `:latest` or a branch tag? OCI provenance labels
-present and accurate? SBOM and provenance attestations produced and pushed?
-
-**Build hygiene** — multi-stage with no toolchain or dev dependencies in the final stage? Dependency
-install before source copy? `apt-get update` and `install` in one `RUN` with the lists cleaned?
-`.dockerignore` committed and covering `.git`, `.env`, keys, and `node_modules`? `COPY` used instead
-of `ADD` for local files, with a checksum on any remote fetch? Absolute `WORKDIR`? No recursive
-`chown` layer? One concern per image?
-
-**Runtime identity and hardening** — `USER` present with a non-root numeric UID, after every step
-needing root? Read-only root filesystem with `tmpfs` for the paths actually written? All
-capabilities dropped and only the needed ones added? `no-new-privileges` set? Nothing `privileged`?
-Docker socket unmounted? Ports bound to a specific interface?
-
-**Process lifecycle** — exec-form `ENTRYPOINT`/`CMD`? Entrypoint script ends with `exec`? SIGTERM
-handler that stops intake, drains, and exits? Workers NACK in-flight jobs and are idempotent?
-`terminationGracePeriodSeconds` longer than worst-case drain? `preStop` delay where the proxy
-removes endpoints asynchronously, and can the image actually execute the `preStop` handler it
-declares? Does the container exit 0 after emitting its shutdown log line — not 143 or 137?
-
-**Health and resources** — separate liveness and readiness? Liveness shallow and free of downstream
-dependencies? Startup probe for slow init? Probe timeouts raised above the 1s default? Requests
-**and** limits set for CPU and memory, derived from a measurement? Restart policy bounded?
-
-**Configuration and logs** — all config from the environment, one image across environments? Nothing
-stateful on the container filesystem? Logs unbuffered structured lines on stdout/stderr, with no
-in-container log files or rotation? Nothing sensitive in the log stream or the health endpoint?
-
-**CI gates** — `docker build --check` and a Dockerfile linter running and failing the build?
-Vulnerability scan failing on fixable HIGH/CRITICAL rather than reporting only? Is every gate written
-as `if cmd; then exit 1; fi` over materialised output, so it cannot fail open? Hardened-runtime smoke
-test present, and does it
-reach a real serving state rather than printing a version? Is the escalated-checks flag on the build
-that actually ships? Any suppression carrying an owner and an expiry? Images pulled only from a
-trusted registry, with signature/policy verification at admission?
-
-**Deployment and rollback** — rollout via a controller with explicit `maxSurge`/`maxUnavailable`
-and `minReadySeconds`? Manifests in version control? Rollback documented as a single command with
-retained revision history? Migrations backward compatible and run as a separate one-off job rather
-than at app startup? Is the previously deployed artifact still identifiable and pullable?
+- Never invent a `sha256` digest; leave a clearly marked placeholder (`@sha256:<digest>`). Never invent versions, CVE IDs, image sizes, or tool flags.
+- When touching a server or worker entrypoint, verify SIGTERM handling with `docker stop -t 30`: the container must log its shutdown line and exit 0 (143: no handler installed; 137: SIGKILL after the grace period, the signal never reached the process). If the app has none, say so rather than assuming the platform handles it.
+- When a section 8 control blocks something, report the blocker rather than relaxing the control.
+- Flag every security-relevant change in the summary: user, capabilities, mounted paths, published ports, network policy, and where each secret must come from.
