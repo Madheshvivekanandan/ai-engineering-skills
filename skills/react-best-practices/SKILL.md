@@ -1,6 +1,6 @@
 ---
 name: react-best-practices
-description: React/TypeScript engineering standard for Vite + React 18 SPAs built with Refine, MUI, react-hook-form, and react-router v6. Load BEFORE writing, modifying, or reviewing any React code in such an app — anything under src/ (pages/, components/, providers/, hooks) or any .tsx/.ts component, hook, data fetch, form, MUI DataGrid, or theme change. Covers component architecture, naming, state management, TypeScript, error handling, forms, testing, security, accessibility, performance (waterfalls, bundle size, re-renders), tooling gates, and a review checklist.
+description: React/TypeScript engineering standard for Vite + React 18 SPAs built with Refine, MUI, react-hook-form, and react-router v6. Load BEFORE writing, modifying, or reviewing any React code in such an app — anything under src/ (pages/, components/, providers/, hooks) or any .tsx/.ts component, hook, data fetch, form, MUI DataGrid, or theme change. Covers component architecture, naming, state management, TypeScript, error handling, forms, testing, security, accessibility, performance (waterfalls, bundle size, re-renders), and tooling gates.
 license: MIT
 metadata:
   perf-rules-adapted-from: vercel-labs/agent-skills — skills/react-best-practices (MIT, v1.0.0)
@@ -9,18 +9,14 @@ metadata:
 
 # React Best Practices (Vite + Refine + MUI SPA)
 
-Correctness and clarity first, then performance. Performance rule IDs (`async-parallel`,
-`rerender-memo`, …) come from **vercel-labs/agent-skills** `skills/react-best-practices` (MIT);
-Next.js/RSC and React-19-only rules are adapted or excluded per §0. Full provenance:
-`references/sources.md`.
+Vite + React 18 SPA (not Next.js), TypeScript 5.4 `strict: true`, `@refinedev/core` + `@refinedev/mui`, MUI 5 (`@mui/material`, `@mui/x-data-grid`, `@mui/x-date-pickers`), `react-hook-form`, `react-router-dom` v6, `axios`, `dayjs`.
+When this conflicts with an in-repo convention, follow the repo and say so.
 
-## 0. Target Stack & What Does Not Apply
-
-This skill targets a **Vite + React 18 SPA** (TypeScript 5.4, `strict: true`), not Next.js:
+## 1. Stack Boundaries & Layout
 
 ```
 src/
-  pages/<feature>/          # route screens
+  pages/<feature>/          # route screens: <Feature>Page.tsx
     components/             #   feature-local components
   components/common/, components/layout/
   providers/                # Refine data/auth providers (dataProvider.ts, authProvider)
@@ -28,444 +24,127 @@ src/
   config/, theme/, utils/
 ```
 
-- Stack: `@refinedev/core` + `@refinedev/mui`, MUI 5 (`@mui/material`, `@mui/x-data-grid`,
-  `@mui/x-date-pickers`), `react-hook-form`, `react-router-dom` v6, `axios`, `dayjs`.
-- Import alias `@/*` → `src/*` is configured — prefer it over deep `../../..` chains.
-- Money is **INR**. Use a shared formatter (`Intl.NumberFormat("en-IN", {currency:"INR"})`);
-  never hand-concatenate a symbol, never float-accumulate currency.
+- New feature → `pages/<feature>/<Feature>Page.tsx` + `components/`; reusable across features → `components/common/`; shared types → `interfaces/`. Never create a parallel tree.
+- Import through the `@/*` → `src/*` alias, not `../../..` chains.
+- Money is INR: format through one shared `Intl.NumberFormat("en-IN", {style:"currency", currency:"INR"})` formatter; never hand-concatenate a symbol or float-accumulate currency.
+- Never suggest Next.js/RSC/SSR concepts (`"use client"`, server actions, hydration, `next/*`): lazy-load with `React.lazy`; put `defer`/`async` scripts and `<link rel="preconnect">`/`<link rel="preload">` in `index.html`. No SWR: Refine wraps TanStack Query, which already dedupes and caches.
+- React 18 is pinned; its docs are `https://18.react.dev` (react.dev documents 19.x). React-19-only, unavailable here: Actions (async functions in `startTransition`), `useActionState`, `useOptimistic`, `useDeferredValue(value, initialValue)`, `use`, `ref` as a prop, ref cleanup functions, `react-dom` `preload`/`preconnect`, `useEffectEvent`, and `<Activity>` (instead keep an expensive tab panel mounted and hide it with CSS, or hoist its state above the tab switch).
 
-**Next.js / RSC / React-19 concepts that DO NOT apply here — never suggest them.** Some rows name
-a real upstream rule ID; others name a framework API upstream never wrote a rule for.
+## 2. Components & Naming
 
-| Not applicable | Why |
-|---|---|
-| RSC / Server Components, `"use client"` | No RSC; everything is a client component. |
-| `next/dynamic`, `next/script` (and Next's image/font components, which upstream has no rule for) | No Next.js. Use `React.lazy` + `<Suspense>`; plain `defer`/`async` on scripts in `index.html`. |
-| Server actions, `server-auth-actions`, `after()` | No server runtime; this is a pure client SPA calling a separate backend API. |
-| `server-cache-react` (`React.cache()`), RSC prop serialization | Server-only APIs. |
-| SSR hydration rules (`rendering-hydration-*`) | SPA — no SSR/hydration step. |
-| SWR (`client-swr-dedup`) | Refine wraps TanStack Query, which already dedupes/caches. Don't add SWR. |
-| `rendering-activity` (`<Activity>`) | React 19.2 API — not available on React 18. See §8 for the React 18 alternative. |
-| `rendering-resource-hints` (`preload`/`preconnect` from `react-dom`) | React 19 APIs, and upstream frames them as server-component guidance. Use plain `<link rel="preconnect">`/`<link rel="preload">` in `index.html`. |
-| `advanced-effect-event-deps` (`useEffectEvent`) | React 19.2 API. Use `advanced-use-latest`/`advanced-event-handler-refs` instead (§9). |
+- Extract past these limits: component file ≤ 250 lines; component function ≤ 120 lines and ≤ 5 hooks doing unrelated work; JSX nesting ≤ 4; ≤ 8 props (group into an object or split). Never grow a file already over a limit: extract the part you touch into `pages/<feature>/components/`.
+- A page composes, child components render sections, custom hooks own data and logic: when a component both fetches/derives and renders a large JSX tree, the fetch/derive half becomes `use<Feature>()` in the feature folder.
+- Prefer `children`/slots to a variant-plus-boolean-flags API; past 2 levels of prop drilling, use context or restructure.
+- Never define a component inside a component, including DataGrid cell and slot renderers: `renderCell`, plus `slots`/`slotProps` on `@mui/x-data-grid` v6+ or `components`/`componentsProps` on v5 (check the installed major). Hoist, or `useCallback`.
+- Naming: internal handlers `handle*` (`handleSubmit`), callback props `on*` (`onApprove`); no `I` prefix on types or interfaces; units in the name (`timeoutMs`, `amountInr`); component file named after its component (`CreditProfileCard.tsx`), not `index.tsx`.
+- Never `&&` with a numeric left side (`{count && <X/>}` renders `0`); use a ternary.
 
-**React 18 pins the behaviour here** (read `https://18.react.dev`; react.dev documents 19.2).
-React-19-only features that look applicable but are not: async functions in `startTransition`
-(Actions), `useActionState`, `useOptimistic`, `useDeferredValue(value, initialValue)`, `use`,
-`ref` as a prop, ref cleanup functions, `<Activity>`, `useEffectEvent`.
+## 3. State Management
 
-## 1. Philosophy
+Pick the location in this order:
 
-- **Correctness and clarity before optimization.** Only optimize with a measurement.
-- **One responsibility per component.** Data-shaping, side effects and markup want separating.
-- **Make invalid states unrepresentable** with types, rather than defending against them at runtime.
-- **Never leave the user staring at a blank screen** — every async path has loading and error states.
+1. Server state → Refine hooks (`useList`, `useOne`, `useCustom`, `useUpdate`). Never copy fetched data into `useState`; never hand-roll `useEffect` + `axios` + `setState`.
+2. URL state → `useSearchParams`: filters, pagination, sort, active tab and selected-row id live in the URL, not `useState`.
+3. Local UI state (open/closed, hover, draft input) → `useState` in the nearest owner; `useReducer` once 3+ fields change together or transitions have rules.
+4. Cross-cutting → context, sparingly (auth/user, theme, notifications): one provider per concern, memoized value.
 
-## 2. Component Architecture & Naming
-
-**Size limits (enforced in review).** Extract past these:
-
-| Unit | Limit |
-|---|---|
-| Component file | **≤ 250 lines** |
-| Component function body | ≤ 120 lines / ≤ 5 hooks doing unrelated work |
-| JSX nesting depth | ≤ 4 |
-| Props on one component | ≤ 8 (past that, group into an object or split) |
-
-> Most codebases have files that already exceed these limits. Find this project's before you
-> start: `find src -name '*.ts*' -exec wc -l {} + | awk '$1 > 250 && $2 != "total"' | sort -rn`.
-> **Never grow a file that is already over the limit** — when editing one, extract the part you
-> touch into `pages/<feature>/components/`. Don't refactor wholesale unless asked.
-
-- **Split by responsibility:** a page composes; child components render sections; **custom hooks
-  own data + logic**. If a component both fetches/derives and renders 200 lines of JSX, the
-  fetch/derive half becomes `use<Feature>()` in the feature folder.
-- **New feature** → `pages/<feature>/` with a `<Feature>Page.tsx` + `components/`.
-  Reusable across features → `components/common/`. Shared types → `interfaces/`.
-- **Composition over prop-drilling and over configuration flags.** Prefer `children`/slots to a
-  `variant`-plus-ten-booleans API. Past 2 levels of drilling, use context or restructure.
-- **No inline component definitions** — see `rerender-no-inline-components` (§8).
-
-**Naming**
-
-| Kind | Convention | Good | Bad |
-|---|---|---|---|
-| Component file + fn | `PascalCase`, matching | `CreditProfileCard.tsx` | `card2.tsx`, `index.tsx` everywhere |
-| Hook | `use` + noun/verb | `useTicketFilters()` | `ticketStuff()` |
-| Event handler (internal) | `handle*` | `handleSubmit` | `onSubmitClick2`, `doIt` |
-| Event prop (external) | `on*` | `onApprove` | `approveCb` |
-| Boolean prop/state | `is/has/can/should*` | `isCreditBlocked` | `flag`, `status2` |
-| Constant | `UPPER_SNAKE` module scope | `MAX_LINE_ITEMS` | inline `50` |
-| Type / interface | `PascalCase`, no `I` prefix | `Ticket`, `CreditProfile` | `ITicket`, `TicketType2` |
-| Units in the name | always | `timeoutMs`, `amountInr` | `timeout`, `amount` |
-
-## 3. State Management — Pick the Right Location
-
-Choosing wrong here causes most React bugs. In priority order:
-
-1. **Server state → Refine hooks** (`useList`, `useOne`, `useCustom`, `useUpdate`).
-   Never mirror fetched data into `useState`; that's a stale-copy bug. Never hand-roll
-   `useEffect` + `axios` + `setState` — you lose dedup, caching, and cancellation.
-2. **URL state → `useSearchParams`** (react-router v6). **Filters, pagination, sort, active tab,
-   and selected-row id belong in the URL**, not `useState`. Makes views shareable and
-   refresh-survivable. This is the most-missed rule in table-heavy screens
-   (tickets, receivables, payables).
-3. **Local UI state → `useState`/`useReducer`** in the *nearest* owner: open/closed, hover, draft
-   input. `useReducer` once state updates get complex enough to cause bugs — as a local bright
-   line, 3+ fields changing together or transitions with rules; the reducer's payoff is a pure
-   function you can unit-test in isolation.
-4. **Cross-cutting → context**, sparingly (auth/user, theme, notifications). Split providers by
-   concern and keep values memoized — one god-context re-renders the whole app on any change.
-
-- **Derive, don't duplicate.** Compute during render from the source of truth; no `useEffect` to
-  sync two pieces of state (see `rerender-derived-state-no-effect`).
-- **Single source of truth.** If two states can disagree, one must be derived.
-- Reset child state on identity change with a `key`, not an effect.
+- Derive during render; effects only synchronize with external systems, never `useEffect` + `setState` to compute or sync state. Reset child state on identity change with a `key`.
+- Never mutate props, state or Refine query results (the shared TanStack Query cache) in place with `.sort()`/`.reverse()`/`splice`; copy first (`[...rows].sort(...)`).
+- Persisted `localStorage` data is versioned and minimal, read once into memory, never in a render path.
 
 ## 4. TypeScript
 
-- `strict: true` is on — keep it. **`tsc` gates `npm run build`.**
-- **No `any`.** Use `unknown` + narrowing, a real interface, or a generic. If unavoidable, a
-  comment must justify it. (Pre-existing `any`s: baseline rule, §12.)
-- **Type API responses at the boundary** (`interfaces/`) and use those types inward. Don't let
-  `any` from `axios`/`dataProvider` leak into components.
-- **Discriminated unions over optional-flag soup** — model states as
-  `{status:"loading"} | {status:"error"; error:E} | {status:"ok"; data:D}`, so impossible
-  combinations don't typecheck.
-- Prefer `type` for unions/aliases, `interface` for object shapes that may be extended.
-  No `I` prefix. `satisfies` to keep literal inference while checking a shape.
-- `import type { … }` for type-only imports (lint enforces).
-- Type props explicitly; avoid `React.FC` — it can't express a generic component signature, forces
-  the return type, and has known `defaultProps` problems. (Don't cite children as the reason:
-  `@types/react` 18 — the version this stack pins — removed the implicit `children` prop, so
-  declare `children: React.ReactNode` when you accept it.) Use `ComponentProps<typeof X>` to extend
-  MUI component props rather than restating them; reach for `ComponentPropsWithoutRef` /
-  `ComponentPropsWithRef` when `ref` forwarding matters.
+- Keep `strict: true`. No `any`; an unavoidable one carries a justifying comment.
+- Type API responses at the boundary in `interfaces/`; don't let `any` from `axios`/`dataProvider` reach components.
+- Model mutually exclusive states as discriminated unions (`{status:"loading"} | {status:"error"; error:E} | {status:"ok"; data:D}`), not optional flags.
+- `type` for unions/aliases, `interface` for object shapes that may be extended; `import type` for type-only imports (lint enforces).
+- Type props explicitly; no `React.FC`. `@types/react` 18 has no implicit `children`: declare `children: React.ReactNode` when accepted. Extend MUI props with `ComponentProps<typeof X>` (`ComponentPropsWithoutRef`/`ComponentPropsWithRef` when ref forwarding matters) rather than restating them.
 - Never `@ts-ignore`; `@ts-expect-error` with a reason comment if truly needed.
 
 ## 5. Error Handling & Resilience
 
-- **Error boundaries are mandatory.** Without one, a single render throw blanks the entire SPA.
-  Wrap (a) the app shell and (b) each independently-failing panel — a dashboard card must not
-  take down the page. Boundaries catch errors thrown **while rendering**, and in lifecycle methods
-  and constructors. They do **not** catch event-handler errors, throws inside
-  `setTimeout`/`requestAnimationFrame`/a bare promise rejection, or the boundary component's own
-  throw — `try`/`catch` those yourself. Failed `React.lazy` chunk loads DO reach a boundary —
-  pair every `<Suspense>` with one.
-- **Every mutation handles failure.** Never fire-and-forget a write: on failure, surface a
-  message, keep the user's input, and re-enable the control. Never swallow — no empty `catch`.
-- **Map status codes to behaviour**, centrally in the provider/interceptor:
-  `401` → re-auth; `403` → forbidden view (a dedicated `forbidden/` route is the clean pattern);
-  `422` → field-level form errors (§6); `5xx`/network → retryable "something went wrong".
-- **Retries** only for idempotent reads (GET), bounded with backoff. **Never auto-retry a
-  non-idempotent write** — retrying a credit approval or invoice post can double-apply it.
-- Timeouts on every request; treat "no response" as a failure state, not a permanent spinner.
-- Show three distinct states — **loading / empty / error** — and never conflate empty with error.
-- Log with `console.error` and real context (no PII/tokens — §10).
+- Error boundaries around the app shell and each independently failing panel. A failed `React.lazy` chunk load throws to the nearest boundary, so pair every `<Suspense>` with one.
+- Map statuses once, in the data provider or axios interceptor: `401` → re-auth; `403` → forbidden view (a `forbidden/` route); `422` → field errors on the form; `5xx`/network → retryable "something went wrong". Never render raw backend errors or stack traces.
+- Every mutation handles failure: show a message, keep the user's input, re-enable the control.
+- Auto-retry only idempotent reads (GET), bounded with backoff; never auto-retry a non-idempotent write (credit approval, invoice post).
+- Creating `POST`s send an `Idempotency-Key` generated once per submitted set of values and reused when the user resends after a timeout or network error; never mint one per request in an interceptor.
+- Every request has a timeout; no response is an error state, not a permanent spinner.
+- Loading, empty and error are three distinct states; never show empty for an error.
+- Log with `console.error` and context; never log PII or tokens.
 
 ## 6. Forms & Validation (react-hook-form)
 
-These screens move money — credit requests, invoices, dispatch. Treat forms as critical paths.
-
-- **Schema-validate** (zod/yup + resolver) as the single source of truth for rules; infer the TS
-  type from the schema so types and validation can't drift.
-- **Validate on the server too, always.** Client validation is UX, never a trust boundary.
-- **Prevent double submit:** disable the submit control while `isSubmitting`. A double-click that
-  posts a payment twice is a data-integrity incident.
-- **Map server field errors back onto fields** via `setError`, with a form-level message for
-  non-field errors. Don't drop a 422 into a toast and lose which field was wrong.
-- Use **`Controller`** for MUI inputs that don't expose the native input's ref (`Select`,
-  `Autocomplete`, `DatePicker`, `Checkbox`/`Switch` groups) — the trigger is **ref exposure, not
-  controlled-ness**; plain `TextField` takes `{...register("field")}` directly and is cheaper.
-  For a field that must stay controlled, `Controller`/`useController` isolates its re-renders.
-- Subscribe narrowly: **`useWatch` on the specific field**, never `watch()` on the whole form
-  (re-renders everything per keystroke).
-- Warn on navigate-away when `isDirty`. Reset via `reset()` after a successful submit.
-- Money/quantity inputs: parse and validate as fixed-precision; enforce min/max and step; reject
-  negatives explicitly rather than relying on the input type.
-- Dates: the backend stores **UTC**. Convert at the boundary with `dayjs` and be explicit about
-  timezone — naive local parsing produces off-by-one-day delivery dates.
+- A schema (zod/yup + resolver) is the single source of validation rules; infer the TS type from it.
+- Disable submit while `isSubmitting`, which holds only while the submit handler's promise is pending: `await mutateAsync(...)` (or return Refine's `onFinish`, which waits only under the default `pessimistic` `mutationMode`), never a fire-and-forget `mutate()`.
+- Map a 422's field errors onto fields with `setError`, plus a form-level message for non-field errors; never collapse them into a toast.
+- `Controller` for MUI inputs that don't expose the native input's ref (`Select`, `Autocomplete`, `DatePicker`, `Checkbox`/`Switch` groups): the trigger is ref exposure, not controlled-ness. Plain `TextField` takes `{...register("field")}` directly.
+- `useWatch` on the specific field; never `watch()` the whole form.
+- Warn on navigate-away when `isDirty`; `reset()` after a successful submit.
+- Money/quantity inputs: parse and validate as fixed precision, enforce min/max/step, reject negatives explicitly rather than relying on the input type.
+- Dates: the backend stores UTC. Convert at the boundary with `dayjs` (plugins registered once at app setup) and an explicit timezone; naive local parsing produces off-by-one-day dates.
 
 ## 7. Testing
 
-If no test framework is configured (**recommended: Vitest + React Testing Library + MSW**), that
-is a gap — say so, and don't claim tests were run until one exists. Once present:
-
-- **Vitest + RTL + `@testing-library/user-event`**; **MSW** to mock the API at the network layer.
-- **Test behaviour, not implementation.** Query by role/label/text as a user would
-  (`getByRole("button", {name:/approve/i})`); never assert on state internals or snapshot whole trees.
-- **Cover per feature:** happy path; **empty, loading, and error states**; validation failures;
-  permission-denied (RBAC) rendering; and the money/rounding edges.
-- Test **custom hooks** directly (`renderHook`) — that's where logic should live and it's the
-  cheapest place to assert it.
-- Deterministic: fake timers, fixed clock (no `new Date()` in assertions), seeded data, no
-  network, no `sleep`. Use builders/factories over giant literal fixtures.
-- **Every bug fix ships a regression test** that fails before the fix.
-- Priority when adding coverage to an untested codebase: money/credit logic → form validation →
-  status transitions → table filtering. Don't chase a coverage % on presentational markup.
+- Vitest + React Testing Library + `@testing-library/user-event`, with MSW mocking the API at the network layer. If none is configured, say so.
+- Query by role/label/text (`getByRole("button", {name:/approve/i})`); never assert on state internals or snapshot whole trees.
+- Cover per feature: happy path; empty, loading and error states; validation failures; permission-denied (RBAC) rendering; money/rounding edges. Test custom hooks directly with `renderHook`.
+- Deterministic (fake timers, fixed clock, no network, no `sleep`; factories over giant literal fixtures); every bug fix ships a regression test that fails before the fix.
+- Adding coverage to an untested codebase: money/credit logic → form validation → status transitions → table filtering. Never chase a coverage % on presentational markup.
 
 ## 8. Performance
 
-### Waterfalls (CRITICAL)
-
-- **`async-parallel`** — independent requests in `Promise.all`, never sequential `await`s.
-- **`async-cheap-condition-before-await`** — cheap sync checks (permission, empty input) first.
-- **`async-defer-await`** — start the promise early, `await` only in the branch that needs it.
-- **`async-dependencies`** — don't make C wait on A when only B depends on A.
-- **`async-suspense-boundaries`** — one boundary per independently-loading region, so one slow
-  panel doesn't block the screen. Upstream's mechanism for this rule is **RSC streaming**, which
-  does not exist here: on React 18 + Vite, `<Suspense>` covers `React.lazy` chunks and a data layer
-  explicitly opted into suspense (TanStack Query's `useSuspenseQuery`) — you cannot suspend on a
-  bare promise. Otherwise each panel owns its own loading state rather than sharing one. Pair every
-  boundary with an error boundary (§5).
-
-```ts
-// Bad — 3 sequential round trips
-const ticket   = await api.getTicket(id);
-const credit   = await api.getCredit(ticket.customerId);
-const products = await api.listProducts();
-
-// Good — products is independent; credit genuinely depends on ticket
-const productsPromise = api.listProducts();
-const ticket = await api.getTicket(id);
-const [credit, products] = await Promise.all([
-  api.getCredit(ticket.customerId),
-  productsPromise,
-]);
-```
-
-Never `await` inside a loop over rows — collect promises, then `Promise.all`.
-
-### Bundle size (CRITICAL)
-
-- **`bundle-dynamic-imports`** — `React.lazy` + `<Suspense>` for heavy/deferred UI: DataGrid
-  screens, date pickers, charts, export/print views, large dialogs. Route-level splitting per
-  `pages/<feature>` is the cheapest win, and the largest genuine shipped-bytes win in this list.
-  (Upstream says `next/dynamic`; `React.lazy` + `<Suspense>` is this stack's adaptation — §0.)
-- **`bundle-analyzable-paths`** — static literal import paths only; no template-string `import()`.
-- **`bundle-conditional`** — load admin/export-only modules when activated, not at module scope.
-- **`bundle-defer-third-party`** / **`bundle-preload`** — analytics after first paint; `import()`
-  on nav hover/focus.
-- **`bundle-barrel-imports`** — import concrete MUI modules:
-
-```ts
-// Bad
-import { Button, Dialog } from "@mui/material";
-// Good
-import Button from "@mui/material/Button";
-import DeleteIcon from "@mui/icons-material/Delete";
-```
-
-  Path imports are a lint + dev-speed win, not shipped bytes: Vite already tree-shakes barrels in
-  production; the cost is dev-server startup/rebuild time (worst with `@mui/icons-material`).
-  Don't call it a bundle win without a `vite build` measurement. Existing barrels: baseline rule,
-  §12. Type-only barrels (`interfaces/`) are exempt — `import type` is erased.
-- Register `dayjs` plugins once at app setup, not per component.
-
-### Data fetching
-
-- **Query keys.** With Refine hooks the key is *generated* from the hook's own properties
-  (`resource`, `filters`, `sorters`, `pagination`, `id`), so pass parameters **as hook properties**
-  rather than closing over them in a fetch — anything smuggled in outside those props is invisible
-  to the cache. Where you write a key by hand (`useCustom`, a raw `useQuery`), include **every**
-  result-affecting parameter (filters, pagination, customer id) or you serve stale/cross-contaminated
-  data. Verify with the TanStack Query devtools.
-- **Server-side** pagination/filtering for large tables; never fetch-all-and-filter-client-side.
-- Invalidate precisely (affected resource/id) after mutations, not the whole cache.
-- **`client-event-listeners`** one shared global listener, not one per row.
-  **`client-passive-event-listeners`** `{passive:true}` for scroll/wheel/touch.
-- **`client-localstorage-schema`** version and minimize persisted data; read once into memory
-  (`js-cache-storage`), never in a render path.
-- Ignore/abort stale in-flight responses so a slow earlier one can't overwrite a newer one.
-
-### Re-renders
-
-- **`rerender-derived-state-no-effect`** derive during render; no `useEffect`+`setState` to compute.
-- **`rerender-no-inline-components`** never define a component inside a component — it remounts and
-  loses state every parent render. **Includes DataGrid cell and slot renderers** — `renderCell`,
-  plus `slots`/`slotProps` on `@mui/x-data-grid` v6+ or `components`/`componentsProps` on v5 (check
-  the installed major; the rename landed in Data Grid v6). Hoist or `useCallback`.
-- **`rerender-functional-setstate`** `setX(prev=>…)` keeps callbacks stable.
-- **`rerender-defer-reads`** don't subscribe to state used only inside a callback.
-- **`rerender-derived-state`** subscribe to the derived boolean, not the churning raw value.
-- **`rerender-dependencies`** primitive deps, not freshly-built objects/arrays.
-- **`rerender-lazy-state-init`** `useState(() => expensive())`.
-- **`rerender-memo`** memoize genuinely expensive subtrees;
-  **`rerender-simple-expression-in-memo`** don't memo a primitive comparison.
-- **`rerender-memo-with-default-value`** hoist non-primitive defaults (`const EMPTY: readonly T[] = []`).
-- **`rerender-split-combined-hooks`**, **`rerender-move-effect-to-event`**,
-  **`rerender-transitions`** / **`rerender-use-deferred-value`** (responsive input over a big list),
-  **`rerender-use-ref-transient-values`** (scroll/drag values).
-
-> React Compiler (supports 17/18/19) would handle most memoization; keep existing memoization when enabling it.
-
-### Rendering
-
-- **`rendering-conditional-render`** ternary, not `&&` — `{count && <X/>}` renders a literal `0`.
-- **Stable, data-derived `key`s** (`ticket.id`); never array index on reorderable/filterable rows.
-- **`rendering-hoist-jsx`** static JSX to module scope. **`rendering-content-visibility`** +
-  virtualization for long lists. **`rendering-usetransition-loading`**,
-  **`rendering-animate-svg-wrapper`**, **`rendering-svg-precision`**,
-  **`rendering-script-defer-async`** (§0: in `index.html`).
-- `rendering-activity` / `rendering-resource-hints` are React 19 APIs — not applicable (§0). The
-  React 18 alternative to `<Activity>` for an expensive tab panel: keep it mounted and hide it
-  with CSS, or hoist its state above the tab switch.
-
-### JavaScript (lowest priority — never trade readability for these)
-
-- **`js-set-map-lookups`/`js-index-maps`** build a `Map` once instead of `.find()` in a loop
-  (the classic O(n²) in a table render).
-- **`js-combine-iterations`**, **`js-flatmap-filter`**, **`js-early-exit`**,
-  **`js-length-check-first`**, **`js-hoist-regexp`**, **`js-cache-property-access`**,
-  **`js-cache-function-results`**, **`js-min-max-loop`**,
-  **`js-tosorted-immutable`** (never mutate props/state in place), **`js-batch-dom-css`**,
-  **`js-request-idle-callback`**.
+- Start independent requests together (`Promise.all`); never `await` inside a loop over rows.
+- `React.lazy` per route (`pages/<feature>`) and for heavy or rarely used UI: DataGrid screens, date pickers, charts, export/print views, large dialogs, admin-only modules. `import()` paths are static literals, never template strings.
+- On React 18, `<Suspense>` suspends only for `React.lazy` chunks and a data layer opted into suspense (TanStack Query v5 `useSuspenseQuery` under Refine 5; `suspense: true` on v4 under Refine 4), never a bare promise; otherwise each panel owns its own loading state. Give each independently loading region (lazy dialog, tab, chart panel) its own `<Suspense>`, or it falls back to the route boundary and blanks the page.
+- Import concrete MUI modules (`@mui/material/Button`, `@mui/icons-material/Delete`), not the barrel. This is a lint and dev-server-speed win (worst with `@mui/icons-material`), not shipped bytes: Vite tree-shakes barrels in production, so never call it a bundle win without a `vite build` measurement. Type-only barrels (`interfaces/`) are exempt.
+- Refine generates query keys from hook props (`resource`, `filters`, `sorters`, `pagination`, `id`): pass parameters as props, never close over them in a fetch. A hand-written key (`useCustom`, raw `useQuery`) includes every result-affecting parameter (filters, pagination, customer id).
+- Paginate and filter large tables server-side; after a mutation, invalidate only the affected resource/id.
+- Against a cursor API (`page_token`/`next`), the URL holds `page_size` and the current `page_token` (passed to the data provider via `meta`), never a page number the API cannot resolve; an expired-token `400` resets to the first page.
+- `memo`/`useMemo`/`useCallback` only for measured-expensive work or an identity another rule needs (context value, grid renderer, effect dependency); never memo a primitive expression.
+- React Compiler supports React 18 (`target: "18"` plus `react-compiler-runtime`); when enabling it, keep existing memoization.
 
 ## 9. Hooks Correctness
 
-- Rules of Hooks: top level of a component or custom hook only — never in a condition, loop, or
-  after an early return, and never inside `try`/`catch`/`finally`, an event handler, a class
-  component, or a function passed to `useMemo`/`useReducer`/`useEffect`.
-- **Complete dependency arrays.** Never silence the lint by deleting a dep — fix the design
-  (hoist, ref, functional update, stable callback).
-- **Effects synchronize with external systems** (subscriptions, listeners, imperative APIs) —
-  not for deriving data or reacting to your own `setState`.
-- **Always clean up**: listeners, timers, subscriptions, aborts. A missing cleanup leaks the
-  subscription or timer — connections pile up as the user navigates — and lets a stale response
-  overwrite fresh state. **Silence is not evidence of correctness:** React removed the
-  set-state-on-an-unmounted-component warning in **18.0**, the version this skill targets, so you
-  will never be warned about it.
-- **`advanced-use-latest`/`advanced-event-handler-refs`** stable callback identity without stale
-  closures — the React 18 answer to the stale-closure problem. **`advanced-init-once`**
-  app init once per load, not in `useEffect([])`. (`advanced-effect-event-deps` — see §0.)
+- Never silence `react-hooks/exhaustive-deps` by dropping a dependency; fix the design (hoist, ref, functional update, stable callback).
+- Hoist non-primitive fallbacks that feed a dependency array or a `memo` child to module scope (`const EMPTY: readonly Ticket[] = []`; `data?.data ?? EMPTY`), never an inline `[]`/`{}` default.
+- Clean up every listener, timer and subscription, and abort or ignore stale in-flight responses so a slow earlier one can't overwrite newer state. React 18.0 removed the setState-on-unmounted-component warning, so a missing cleanup fails silently.
+- Stable callbacks without stale closures (React 18's substitute for `useEffectEvent`): keep the latest handler in a ref, assigned in an effect rather than during render, and call `ref.current`, so a subscribing effect doesn't list the handler as a dependency.
+- App-wide init runs once per page load: top level of the entry module or behind a module-level `didInit` guard, never an unguarded `useEffect([])`.
 
 ## 10. Security
 
-- **Never `dangerouslySetInnerHTML`** with server/user content. If unavoidable, sanitize
-  (DOMPurify) and justify in a comment. React escapes by default — don't defeat it.
-- **Client-side authorization is display logic, not enforcement.** Hiding a button is UX; the
-  backend must authorize every action. Never treat an RBAC check in the SPA as a control.
-- **No secrets in the frontend.** Anything in `import.meta.env` shipped to the browser is public —
-  no API keys or signing secrets. Only `VITE_`-prefixed public config.
-- Tokens: prefer httpOnly cookies; if `localStorage` is used, accept the XSS exposure, keep TTLs
-  short, and clear on logout. Never log or put a token in a URL/query param.
-- Validate and allow-list any URL used in `href`/`src`/redirect (block `javascript:`, open redirects);
-  `rel="noopener noreferrer"` on `target="_blank"`.
-- Never render raw backend errors/stack traces to users; no PII or tokens in `console`.
+- No `dangerouslySetInnerHTML` with server or user content; if unavoidable, sanitize with DOMPurify and justify in a comment.
+- Client-side validation and RBAC checks are UX only, never enforcement; the backend authorizes every action.
+- Every `VITE_` variable in `import.meta.env` ships to the browser: public config only, never API keys or signing secrets.
+- Tokens: prefer httpOnly cookies; with `localStorage`, accept the XSS exposure, keep TTLs short, clear on logout. Never put a token in a URL or query param.
+- Allow-list any URL used in `href`/`src`/redirects (block `javascript:` and open redirects); `rel="noopener noreferrer"` on `target="_blank"`.
 
-## 11. Accessibility
+## 11. Accessibility (WCAG 2.2 AA)
 
-Target **WCAG 2.2 Level AA**; Level A items are the floor.
-
-- Semantic elements first (`button`, `nav`, `table`); ARIA only to fill genuine gaps — the First
-  Rule of ARIA Use.
-- Every input has a **programmatically associated label** (SC 1.3.1, A), and a label must exist at
-  all wherever content requires input (SC 3.3.2, A).
-- **Errors: identify the field *and* describe the error in text** (SC 3.3.1, A) — a red border with
-  no message fails. Link the message with `aria-describedby` (or `aria-errormessage` — pick one,
-  stay consistent) and set `aria-invalid` on the control, but not on an untouched required field
-  before a submit attempt. Colour-only error encoding is a separate failure — SC 1.4.1, A.
-- **Icon-only buttons need an accessible name** (`aria-label`) — SC 4.1.2, A.
-- Keyboard reachable and operable (SC 2.1.1, A). **Visible focus** — never remove an outline
-  without a replacement (SC 2.4.7, AA; doing so is documented failure F78). A focused row or field
-  must also not end up **entirely hidden** behind a sticky AppBar, a sticky DataGrid header, or an
-  open Snackbar (SC 2.4.11, AA). The quantified indicator spec (≥ 2 CSS px perimeter, 3:1
-  focused-vs-unfocused) is SC 2.4.13, **AAA** — not required at AA.
-- Dialogs move focus inside on open, wrap Tab within, and return focus to the invoking element on
-  close (WAI-ARIA APG Modal Dialog pattern). MUI `Dialog`/`Modal` does all three by default — don't
-  fight it, and only set `disableAutoFocus`/`disableEnforceFocus`/`disableRestoreFocus` with a
-  documented reason. The focus trap is permitted **only because the user can escape it**, so keep
-  the dialog keyboard-dismissible — Escape plus a visible Cancel/Close (SC 2.1.2, A). MUI does
-  **not** label the dialog for you: add `aria-labelledby` pointing at the `DialogTitle` id, and
-  `aria-describedby` where there is descriptive body text.
-- **Contrast:** body text ≥ 4.5:1 (SC 1.4.3, AA); large text — ≥ 18pt, or ≥ 14pt bold — may drop
-  to 3:1. Non-text parts need ≥ 3:1 against adjacent colours (SC 1.4.11, AA): chip fills and
-  borders, icon glyphs, input outlines, focus rings. And don't encode status by colour alone — add
-  text or an icon (SC 1.4.1, A). Both ratios matter for status chips and badges.
-- Announce async results (toast / `role="status"`, a sufficient technique for SC 4.1.3, AA) so a
-  screen-reader user learns the save succeeded without focus moving.
-- Avoid `autoFocus` unless there's a strong, deliberate UX reason — a **usability judgement, not a
-  WCAG requirement**.
+- Interactive elements are semantic (`button`, `a`, MUI `Button`/`IconButton`/`CardActionArea`), never an `onClick` on a `div`/`Box`/`Card`/`TableRow`; everything is keyboard operable.
+- Every input has a programmatically associated label. Errors identify the field and describe the problem in text; link the message with `aria-describedby` (or `aria-errormessage`; pick one and stay consistent) and set `aria-invalid`, but not on an untouched required field before a submit attempt.
+- Icon-only buttons need an accessible name (`aria-label`).
+- Never remove a focus outline without a replacement, and never let a focused row or field end up entirely hidden behind a sticky AppBar, a sticky DataGrid header or an open Snackbar.
+- MUI `Dialog` moves focus in, traps it and restores it on close: set `disableAutoFocus`/`disableEnforceFocus`/`disableRestoreFocus` only with a documented reason, and keep it dismissible with Escape plus a visible Cancel/Close. It wires `aria-labelledby` only to a `DialogTitle` child without its own `id`: a custom title id, or a dialog titled any other way, needs explicit `aria-labelledby`, and descriptive body text needs `aria-describedby`.
+- Contrast: text ≥ 4.5:1 (large text, ≥ 18pt or ≥ 14pt bold, ≥ 3:1); non-text parts ≥ 3:1 against adjacent colours (chip fills and borders, icon glyphs, input outlines, focus rings). Never convey status or an error by colour alone; add text or an icon.
+- Announce async results with a toast / `role="status"` so a screen-reader user learns a save succeeded without focus moving.
+- Avoid `autoFocus` without a deliberate UX reason.
 
 ## 12. Tooling Gates
 
-Run before calling work complete, from the app root:
+Run from the app root:
 
 ```bash
-npm run typecheck     # tsc --noEmit — must be clean
-npm run lint          # eslint src (--max-warnings 0)
-npm run build         # tsc && vite build — must succeed
+npm run typecheck     # tsc --noEmit
+npm run lint          # eslint src --max-warnings 0
+npm run build         # tsc && vite build
 # npm test            # once Vitest is set up
 ```
 
-**The inherited-debt pattern: measure the baseline on an unmodified checkout, add none, and reduce
-it in files you touch.** Applications: pre-existing `any`s (§4); existing MUI barrel imports (§8);
-these gates — record lint problems by rule and whether typecheck/build pass. If a gate is already
-red on an unmodified checkout, **"the build passes" is not a signal**: verify against the files you
-touched (`npm run lint <paths>`, filtered `tsc --noEmit`) and by running the app; fix the baseline
-failure separately if it is blocking.
-
-- **Never introduce a new warning** — leave touched files at or below their previous count. With
-  `--max-warnings 0` a non-zero baseline fails the whole command; while that is true, treat *your*
-  files as the gate until the debt is burned down.
-- Don't "fix" the baseline wholesale in an unrelated change — that buries the real diff.
+- Inherited debt (pre-existing `any`s, MUI barrel imports, lint warnings): measure it on an unmodified checkout, add none, reduce it in files you touch. `--max-warnings 0` fails the whole command on a non-zero baseline, and a gate already red before your change is no signal: gate on your files (`npm run lint <paths>`, `tsc --noEmit` output filtered to them).
 - Never add `eslint-disable` without a reason comment; never disable a rule repo-wide to go green.
 
-## 13. AI Agent Rules
+## 13. Agent Rules
 
-1. **Read neighbouring code first** and match existing patterns. Repo convention beats this doc.
-2. **Follow the §2 structure** — don't invent a parallel tree.
-3. **Never invent business rules** — credit limits, tax, rounding, status transitions, SLAs. Ask.
-4. **State assumptions** in your response when proceeding under ambiguity.
-5. **Keep the diff focused** — no drive-by refactors or reformatting untouched files.
-6. **Flag security-relevant changes** (auth, RBAC display, tokens, `dangerouslySetInnerHTML`,
-   URL handling) in your summary.
-
-## 14. Review Checklist
-
-Flag real defects only; cite `file:line` and the user-visible consequence.
-
-**Architecture** — file over 250 lines or component over ~120? logic that belongs in a hook sitting
-in JSX? component defined inside a component? prop-drilling past 2 levels? duplication that should
-be extracted, or premature abstraction that shouldn't?
-
-**Naming** — domain-accurate, not `data`/`tmp`/`item`? `handle*`/`on*` split right? booleans
-`is/has/can`? units in the name? magic numbers/strings replaced by named constants?
-
-**State** — server data mirrored into `useState`? filters/pagination/tab in component state instead
-of the URL? two states that can disagree? `useEffect`+`setState` deriving what render could compute?
-context value unmemoized or over-broad?
-
-**Types** — new `any`/`@ts-ignore`? API response typed at the boundary? optional-flag soup where a
-discriminated union belongs? `tsc` clean?
-
-**Errors** — error boundary covering this subtree? mutation failure surfaced and input preserved?
-empty `catch`? 401/403/422/5xx distinguished? non-idempotent write auto-retried? loading/empty/error
-all present? PII or tokens logged?
-
-**Forms** — schema validation? submit disabled while submitting (double-post risk)? server field
-errors mapped back? `watch()` on the whole form? dirty-navigation guard? money precision and
-timezone handled explicitly? `autoFocus` added without a reason (UX opinion, not a conformance
-failure)?
-
-**Testing** — new logic covered incl. error/empty/permission paths? behaviour not implementation?
-deterministic (no real clock/network)? regression test for a bug fix?
-
-**Performance** — sequential awaits that could be parallel? `await` in a loop? heavy component not
-lazy? hand-written query key missing a parameter, or a filter closed over instead of passed as a
-Refine hook prop? unbounded list fetch? `.find()` in a render loop? array index as `key`? `&&` with
-a numeric left side? MUI barrel import (dev-time and lint cost, not shipped bytes)?
-
-**Hooks** — conditional hook? dep array incomplete or suppressed? missing cleanup?
-
-**Security** — `dangerouslySetInnerHTML`? client-side RBAC treated as enforcement? secret in
-`import.meta.env`? unvalidated URL/redirect? missing `noopener`? raw backend error shown to user?
-
-**A11y** — inputs labelled (SC 1.3.1) and errors described in text, not just a red border
-(SC 3.3.1)? icon-only button named (SC 4.1.2)? keyboard reachable (SC 2.1.1), focus visible
-(SC 2.4.7) and not hidden behind a sticky header (SC 2.4.11)? non-text contrast ≥ 3:1 on chips,
-outlines and focus rings (SC 1.4.11)? status conveyed by colour alone (SC 1.4.1)? dialog labelled
-and Escape-dismissible (SC 2.1.2)?
-
-**Gates** — typecheck, lint, build green; no new warnings in touched files; no unexplained
-`eslint-disable`.
+- Never invent business rules (credit limits, tax, rounding, status transitions, SLAs); ask.
+- Flag security-relevant changes (auth, RBAC display, tokens, `dangerouslySetInnerHTML`, URL handling) in your summary.

@@ -8,6 +8,13 @@ Read it as a provenance record, not a reading list. The point is not to show a
 long bibliography — it is to let you tell the difference between a rule backed by
 an RFC and a rule backed by somebody's blog post, without opening either.
 
+On 2026-09-28 every SKILL.md body was trimmed to what changes a capable model's
+behavior, so some sourced rules no longer appear in SKILL.md; their entries are
+kept, here and in each skill's sources file, as the record of what was read.
+Section numbers below follow the trimmed files, and "the original §N" means the
+numbering before that trim. Facts the trim introduced were checked against their
+sources the same day, so the counts below include sources read on 2026-09-28.
+
 ## How to read this file
 
 Each source sits in one of six tiers. The tier describes how the source was
@@ -46,16 +53,21 @@ not re-checked since its stated date should be treated as stale.
 
 | Skill | Citations | Rests primarily on | Verified on |
 |---|---|---|---|
-| [llm-application-best-practices](skills/llm-application-best-practices/SKILL.md) | [37](skills/llm-application-best-practices/references/sources.md) | OWASP GenAI security material, provider API reference, NIST AI RMF, peer-reviewed papers | 2026-08-19 / 2026-08-20 |
-| [sql-schema-design-best-practices](skills/sql-schema-design-best-practices/SKILL.md) | [37](skills/sql-schema-design-best-practices/references/sources.md) | PostgreSQL official documentation (22 pages), RFC 9562, Use The Index Luke | 2026-08-19 |
-| [api-contract-design-best-practices](skills/api-contract-design-best-practices/SKILL.md) | [27](skills/api-contract-design-best-practices/references/sources.md) | RFC 9110 and RFC 9457, Google AIP, the OpenAPI Specification, Stripe's API docs | 2026-08-19 |
-| [docker-deployment-best-practices](skills/docker-deployment-best-practices/SKILL.md) | [33](skills/docker-deployment-best-practices/references/sources.md) | Docker official docs (14 pages), Kubernetes docs, NIST SP 800-190, CIS, OWASP | 2026-08-19 |
-| [git-commit-pr-workflow](skills/git-commit-pr-workflow/SKILL.md) | [33](skills/git-commit-pr-workflow/references/sources.md) | Google eng-practices, git-scm.com and git(1), Conventional Commits, SemVer | 2026-08-19 |
-| [n8n-workflow-best-practices](skills/n8n-workflow-best-practices/SKILL.md) | [13](skills/n8n-workflow-best-practices/references/sources.md) | n8n official docs (4 pages), plus community and third-party guidance | 2026-08-20 (audited) |
-| [python-best-practices](skills/python-best-practices/SKILL.md) | [56](skills/python-best-practices/references/sources.md) | PEP 8 and PEP 257, the Google Python Style Guide, tool documentation (ruff, black, mypy, pytest, SQLAlchemy 2.0, FastAPI), OWASP Top 10:2025 + nine Cheat Sheets + ASVS 5.0.0, Martin's and Evans's own writing | 2026-08-20 (retroactive) |
-| [react-best-practices](skills/react-best-practices/SKILL.md) | [86](skills/react-best-practices/references/sources.md) | Vercel's MIT-licensed upstream skill (verified), react.dev (23 pages), W3C WCAG 2.2 (19), and each library's own docs | 2026-08-20 (retroactive) |
+| [llm-application-best-practices](skills/llm-application-best-practices/SKILL.md) | [48](skills/llm-application-best-practices/references/sources.md) | OWASP GenAI security material, provider API reference, NIST AI RMF, peer-reviewed papers | 2026-08-19 / 2026-08-20 |
+| [sql-schema-design-best-practices](skills/sql-schema-design-best-practices/SKILL.md) | [45](skills/sql-schema-design-best-practices/references/sources.md) | PostgreSQL official documentation (28 pages), RFC 9562, Use The Index Luke | 2026-08-19 |
+| [api-contract-design-best-practices](skills/api-contract-design-best-practices/SKILL.md) | [34](skills/api-contract-design-best-practices/references/sources.md) | RFC 9110 and RFC 9457, Google AIP, the OpenAPI Specification, Stripe's API docs | 2026-08-19 |
+| [docker-deployment-best-practices](skills/docker-deployment-best-practices/SKILL.md) | [42](skills/docker-deployment-best-practices/references/sources.md) | Docker official docs (17 pages), Kubernetes docs, NIST SP 800-190, CIS, OWASP | 2026-08-19 |
+| [git-commit-pr-workflow](skills/git-commit-pr-workflow/SKILL.md) | [50](skills/git-commit-pr-workflow/references/sources.md) | Google eng-practices, git-scm.com and git(1), Conventional Commits, SemVer | 2026-08-19 |
+| [n8n-workflow-best-practices](skills/n8n-workflow-best-practices/SKILL.md) | [39](skills/n8n-workflow-best-practices/references/sources.md) | n8n official docs (14 pages) and n8n source (16 files), plus community and third-party guidance | 2026-08-20 (audited) |
+| [python-best-practices](skills/python-best-practices/SKILL.md) | [76](skills/python-best-practices/references/sources.md) | PEP 8 and PEP 257, the Google Python Style Guide, tool documentation (ruff, black, mypy, pytest, SQLAlchemy 2.0, FastAPI), OWASP Top 10:2025 + nine Cheat Sheets + ASVS 5.0.0, Martin's and Evans's own writing | 2026-08-20 (retroactive) |
+| [react-best-practices](skills/react-best-practices/SKILL.md) | [124](skills/react-best-practices/references/sources.md) | Vercel's MIT-licensed upstream skill (verified), react.dev (28 pages), W3C WCAG 2.2 (19), and each library's own docs | 2026-08-20 (retroactive) |
 
-Fifteen of the API skill's twenty-seven citations are specifications or standards
+A count is the number of distinct URLs a skill's sources file cites. Entries with
+no URL are listed there but not counted: the six claude-api skill files behind
+the LLM skill's provider facts, and the sixteen upstream rule files the React
+skill names individually.
+
+Seventeen of the API skill's thirty-four citations are specifications or standards
 documents. That ratio, more than any total, is what tells you what a skill rests
 on.
 
@@ -95,7 +107,7 @@ lives in the skill's own `references/sources.md`.
 Tier: **Verified (retroactively, 2026-08-20)** — 56 pages and documents read on that
 date, every one of them re-fetched and re-read in an adversarial review the same day.
 Order of authoring and verification matters here: the document was written first and
-checked afterwards, so the References section says so plainly rather than implying the
+checked afterwards, so its sources file says so plainly rather than implying the
 sources were open while it was drafted.
 
 What it rests on now: PEP 8 and PEP 257 (peps.python.org); the Google Python Style
@@ -107,24 +119,30 @@ ASVS 5.0.0's V3/V5/V6/V16 and Appendix C; and, for the architecture material, Ma
 Evans's free 2015 DDD Reference.
 
 **Verification did not merely confirm the document — it exposed contradictions**, and
-they are now written into the body rather than papered over. The largest ones:
+they were written into the body rather than papered over. Since the 2026-09-28 trim
+that commentary lives in the skill's sources file; where a corrected rule survived the
+trim, SKILL.md keeps the rule without it. The largest ones:
 
 - **Line length.** The skill mandated 100 while citing PEP 8 (79 for code, 72 for
   prose, 99 only by team agreement), the Google guide (80), and Black and Ruff (both
   default to 88, and Black's docs warn specifically against exceeding 100). The number
-  stays — it is a defensible house style — but §16 now states every source's value, and
-  says outright that PEP 8's 72-character prose rule is dropped because the formatters
-  this document delegates to do not reflow prose.
+  stays — it is a defensible house style, now set in §14. The original §16 stated every
+  source's value and said outright that PEP 8's 72-character prose rule is dropped
+  because the formatters this document delegates to do not reflow prose. The per-source
+  values were trimmed from SKILL.md 2026-09-28 and live in the skill's sources file; §14
+  keeps only the instruction to hold comments and docstrings narrower than code by hand.
 - **Docstring format misattributed.** "PEP 257 docstrings (Google style)" credited PEP
   257 with the `Args:`/`Returns:`/`Raises:` sections, which PEP 257 does not define at
-  all. §17 now splits the citation: shape and imperative mood from PEP 257, the named
-  sections and the triviality exemption from Google 3.8.3.
+  all. The original §17 split the citation: shape and imperative mood from PEP 257, the
+  named sections and the triviality exemption from Google 3.8.3. The rule is now §15,
+  which carries no citation; the split lives in the skill's sources file.
 - **"Document every raised exception"** instructed the opposite of its source: Google
   3.8.3 says not to document exceptions raised when the documented API is violated.
   Narrowed to the function's contract.
 - **A broken example.** `type CustomerId = NewType("CustomerId", int)` does not type-check
-  under the strict mypy the same section mandates; mypy requires the literal to equal the
-  variable name. Corrected, with a note that `NewType` is not a type alias.
+  under the strict mypy the same section then mandated (strict mode is now §14's, the
+  example §5's); mypy requires the literal to equal the variable name. Corrected, with a
+  note that `NewType` is not a type alias.
 - **File-upload validation was backwards** — it dismissed extension allow-listing (which
   both the File Upload Cheat Sheet and ASVS V5.2.2 require) and endorsed "type", i.e. the
   client-supplied `Content-Type` that OWASP says cannot be trusted. Rewritten.
@@ -133,11 +151,13 @@ they are now written into the body rather than papered over. The largest ones:
   it is a poor CI gate; selecting the whole `E` family re-enables the rules Ruff documents
   as conflicting with the formatter; and "cyclomatic complexity ≤ 8" was never measured,
   because `C4` is flake8-comprehensions and complexity lives in the `C90`/mccabe namespace.
-- **Architecture divergences now stated as such.** Clean Architecture forbids passing
+- **Architecture divergences stated as such.** Clean Architecture forbids passing
   Entities or database rows across a boundary and forbids inner layers depending on outer
   ones; DDD keeps entities and value objects in one isolated layer and names modules from
-  the ubiquitous language. This skill does none of those three, deliberately. §2, §11 and
-  §14 now say so, so the layering rules stop borrowing authority they contradict.
+  the ubiquitous language. This skill does none of those three, deliberately. The
+  original §2, §11 and §14 said so, so the layering rules stopped borrowing authority
+  they contradict. Those rules are now §1, §9 and §12, stated without the sources they
+  depart from; the divergence is recorded in the skill's sources file.
 - **OWASP tightenings**, where the sources were more specific than the skill: hash
   parameters and the PBKDF2/FIPS carve-out that a flat "never SHA" wrongly banned, a
   credential-length policy the skill had omitted entirely, the security events that must be
@@ -153,17 +173,18 @@ in the 59-page PDF. The entry now says what the document actually is — a set o
 its own subtitle and acknowledgements — and says explicitly that it carries no such disclaimer to
 quote. The second was an **overstated default**: Ruff publishes its default rule set as an
 enumeration of individual codes, not families, so "`I` and `N` are on by default" was wrong (only
-`I001` and `N999` are), and §16's claim that Ruff's default narrows `E` to `E4,E7,E9` was wrong in
-the other direction — the default takes no `E4` rule at all and only `E722`/`E902` from pycodestyle.
-The third was a **quotation with no listed home**: §16's "omitting any stylistic rules that overlap
-with the use of a formatter" is real but lives on Ruff's Tutorial page, which was not among the 55;
-it is now the 56th entry, with the tension between its family-level summary and the enumerated
-default recorded.
+`I001` and `N999` are), and the original §16's claim that Ruff's default narrows `E` to `E4,E7,E9`
+was wrong in the other direction — the default takes no `E4` rule at all and only `E722`/`E902` from
+pycodestyle. The third was a **quotation with no listed home**: the original §16's "omitting any
+stylistic rules that overlap with the use of a formatter" is real but lives on Ruff's Tutorial page,
+which was not among the 55; it became the 56th entry, with the tension between its family-level
+summary and the enumerated default recorded. That section is now §14, and its account of Ruff's
+default set, quotation included, was trimmed from SKILL.md 2026-09-28; both entries remain.
 
-Also settled in the negative, which is worth as much: nothing in sections 11 and 12 was
-found to be deprecated, renamed, or invented. Every SQLAlchemy 2.0.52 and FastAPI 0.141.1
-API the skill names exists with that spelling, and all fourteen Ruff rule families it
-selects are real.
+Also settled in the negative, which is worth as much: nothing in the original sections
+11 and 12 (now §9 and §10) was found to be deprecated, renamed, or invented. Every
+SQLAlchemy 2.0.52 and FastAPI 0.141.1 API the skill names exists with that spelling, and
+all fourteen Ruff rule families it selects are real.
 
 ### react-best-practices
 
@@ -178,8 +199,8 @@ metadata:
   perf-rules-adapted-from: vercel-labs/agent-skills — skills/react-best-practices (MIT, v1.0.0)
 ```
 
-Tier: **Adapted with attribution, sources verified 2026-08-20.** Its sources file carries
-86 entries, every one fetched and read on that date:
+Tier: **Adapted with attribution, sources verified 2026-08-20.** Its sources file carried
+86 entries after that pass, every one fetched and read on that date:
 9 for upstream attribution (Vercel's announcement post, seven files and directories in
 `vercel-labs/agent-skills`, and one entry covering the 16 individual rule files read to
 check specific claims), 23 react.dev pages plus React's `CHANGELOG.md`, the archived
@@ -213,7 +234,7 @@ that hides a correction is worth less than one that records it:
   React 18: `rendering-activity` (`<Activity>`, 19.2), `rendering-resource-hints`
   (`preload`/`preconnect` from `react-dom`, 19), and `advanced-effect-event-deps`
   (`useEffectEvent`, 19.2). All three moved into the "does not apply" table, with React 18
-  alternatives given.
+  alternatives given; since the trim that table is §1's React-19-only list.
 - **A warning that no longer exists.** The hooks section claimed a missing effect cleanup
   produces a set-state-after-unmount warning. React removed that warning in **18.0** — the
   exact version the skill targets — so a reader would have read silence as correctness.
@@ -231,16 +252,18 @@ that hides a correction is worth less than one that records it:
   6.15.8 exports it, so that was an install or resolution problem; as written it would have
   steered an agent into hand-rolling the API.
 
-Alongside those, about a dozen weaker tensions are now acknowledged in the text rather
+Alongside those, about a dozen weaker tensions were acknowledged in the text rather
 than silently restated: upstream's `bundle-dynamic-imports` actually prescribes
 `next/dynamic`; `async-suspense-boundaries` is an RSC-streaming rule that on React 18
 covers only `React.lazy` chunks and an opted-in suspense data layer; the `React.FC` advice
 cited implicit `children`, which `@types/react` 18 removed; `slots` on the MUI Data Grid is
 a v6+ prop name; the `Controller` rule now uses react-hook-form's documented criterion
-(ref exposure, not controlled-ness); and the accessibility section — which previously
-carried **zero** citations — now names WCAG 2.2 criterion numbers and conformance levels,
-adds the 3:1 non-text-contrast requirement and SC 2.4.11 Focus Not Obscured, and demotes
-the `autoFocus` rule to what it is: a usability opinion, not a conformance failure.
+(ref exposure, not controlled-ness); and the accessibility section (§11) — which previously
+carried **zero** citations — gained WCAG 2.2 criterion numbers and conformance levels,
+the 3:1 non-text-contrast requirement and SC 2.4.11 Focus Not Obscured, and a demoted
+`autoFocus` rule: a usability opinion, not a conformance failure. The criterion numbers
+and levels were trimmed from SKILL.md 2026-09-28, leaving §11 to state the WCAG 2.2 AA
+target; the requirements themselves remain.
 
 One further defect, fixed the same day and recorded here so it does not resurface as a
 gap: the document used to hard-code one private codebase's measurements — named oversized
@@ -268,7 +291,7 @@ was **audited on 2026-08-20**, and the audit found real problems, all now fixed:
   original session. These are now labelled honestly rather than presented as
   though they had been consulted.
 
-Current state of its thirteen citations:
+State of its thirteen citations after the audit:
 
 | Tier | Count | Which |
 |---|---|---|
@@ -280,10 +303,12 @@ Current state of its thirteen citations:
 Note that `hatchworks.com` also now returns 403 to automated requests; it is listed
 as Verified because it was successfully read on 2026-08-07.
 
-This is the weakest source profile in the repository: only four official
-documentation pages, against six pieces of third-party guidance that nobody has
-read. The rules themselves are sound and mostly mechanical, but if you are relying
-on this skill for anything consequential, prefer the four official pages.
+At the audit this was the weakest source profile in the repository: only four
+official documentation pages, against six pieces of third-party guidance that nobody
+has read. The 2026-09-28 trim added twenty-six citations, each read that day: ten more
+`docs.n8n.io` pages and sixteen files of n8n source code. The six unread guides are still
+unread. The rules themselves are sound and mostly mechanical, but if you are relying
+on this skill for anything consequential, prefer the official pages and the source.
 
 ## Known gaps
 
@@ -296,22 +321,22 @@ Recorded so the absence of proof is visible rather than hidden.
 | *Accelerate* (Forsgren, Humble, Kim) — could not confirm details from a retrieved page, so it is not cited as support for any rule | git-commit-pr-workflow |
 | *Database Design for Mere Mortals* (Hernandez) — same | sql-schema-design-best-practices |
 | Normalization guidance rests on general practice; no clause of ISO/IEC 9075 cited | sql-schema-design-best-practices |
-| Ten of thirteen citations never read at authoring time; six still unread | n8n-workflow-best-practices |
-| *Clean Architecture* (Martin, Pearson 2017) and *Domain-Driven Design* (Evans, Addison-Wesley 2003) — publisher metadata verified, neither book read; no rule attributed to either. The architecture rules cite Martin's 2012 blog post and Evans's free 2015 DDD Reference instead | python-best-practices |
+| Ten of the original thirteen citations never read at authoring time; six still unread | n8n-workflow-best-practices |
+| *Clean Architecture* (Martin, Pearson 2017) and *Domain-Driven Design* (Evans, Addison-Wesley 2003) — publisher metadata verified, neither book read; no rule attributed to either. The skill's sources file attributes the architecture rules to Martin's 2012 blog post and Evans's free 2015 DDD Reference instead | python-best-practices |
 | "Design Principles and Design Patterns" (Martin, 2000), where SOLID originated — not retrievable; objectmentor.com no longer serves it and the Internet Archive was unreachable. No URL is given for it and nothing rests on it | python-best-practices |
-| Which OWASP artifacts the author actually consolidated, and which Top 10 vintage — "OWASP Security Guidelines" is not the title of any OWASP document, so §10's mapping to Top 10:2025, the cheat sheets and ASVS 5.0.0 is a reconstruction, not a record | python-best-practices |
-| Numeric house thresholds with no cited backing: line length 100, ≤ 4 parameters, complexity ≤ 8, class ≤ 200 lines, > 7 public methods, inheritance depth ≤ 2, ~10 files per layer, coverage ≥ 85%, route handler ≤ 15 lines. Labelled as house rules in the skill; several resemble figures from Martin's *Clean Code*, which is not cited and was not read | python-best-practices |
-| Section 13 (async) as a whole, the Alembic rules, and §11's `text()` bound-parameter spelling were not checked against any source in the 2026-08-20 pass | python-best-practices |
+| Which OWASP artifacts the author actually consolidated, and which Top 10 vintage — "OWASP Security Guidelines" is not the title of any OWASP document, so the mapping of §8 (the original §10) to Top 10:2025, the cheat sheets and ASVS 5.0.0, kept in the skill's sources file, is a reconstruction, not a record | python-best-practices |
+| Numeric house thresholds with no cited backing: line length 100, ≤ 4 parameters, complexity ≤ 8, class ≤ 200 lines, > 7 public methods, inheritance depth ≤ 2, ~10 files per layer, coverage ≥ 85%, route handler ≤ 15 lines. Labelled as house rules in the skill's sources file; several resemble figures from Martin's *Clean Code*, which is not cited and was not read | python-best-practices |
+| §11 (async; the original Section 13) as a whole, the Alembic rules (§9), and the original §11's `text()` bound-parameter spelling (trimmed from SKILL.md 2026-09-28) were not checked against any source in the 2026-08-20 pass | python-best-practices |
 | No release number is pinned for Ruff or pytest — their documentation pages display none, so those confirmations hold only "as of 2026-08-20" | python-best-practices |
-| Two cited OWASP artifacts disagree on argon2id parameters: ASVS 5.0.0 Appendix C approves `t = 1, m ≥ 46 MiB, p = 1`, the Password Storage Cheat Sheet's minimum is `m = 19 MiB, t = 2, p = 1`. §10 quotes the cheat sheet and flags the stricter figure; no reconciliation exists upstream to cite | python-best-practices |
+| Two cited OWASP artifacts disagree on argon2id parameters: ASVS 5.0.0 Appendix C approves `t = 1, m ≥ 46 MiB, p = 1`, while the Password Storage Cheat Sheet rates that setting and `m = 19 MiB, t = 2, p = 1` as equal. The original §10 quoted the cheat sheet and flagged the stricter figure; §8 now gives both settings as alternatives, so the open question is whether the 19 MiB setting also meets Appendix C. No reconciliation exists upstream to cite, and Appendix C was not re-read on 2026-09-28 | python-best-practices |
 | `domainlanguage.com` answers some automated fetchers with HTTP 403. The DDD Reference PDF was retrieved directly and text-extracted, so the citation is verified, but it cannot be re-checked with a page-fetch tool alone | python-best-practices |
 | Upstream `vercel-labs/agent-skills` has no `LICENSE` file, no copyright line, and no git tags or releases — MIT and "v1.0.0" are asserted in prose and JSON only | react-best-practices |
 | Whether the upstream rule set on 2026-07-31 matched the 2026-08-20 reading — the skill directory's last commit predates authoring, but with no upstream tags there is nothing to compare against | react-best-practices |
 | "Avoid `React.FC`" rests on `@types/react` typings plus a community cheatsheet; neither react.dev nor the TypeScript handbook takes a position | react-best-practices |
 | Assistive-technology support for `aria-errormessage` versus `aria-describedby` — no primary source quantifies it | react-best-practices |
 | MUI's dev-time-only framing of barrel imports is documentation-based; not measured against a real `vite build` | react-best-practices |
-| React 18's archived `Component` page did not return the error-boundary exclusion list, so that rule is confirmed only against the current React 19.2 page | react-best-practices |
-| §5's "boundaries also catch lifecycle and constructor errors" is stated on no maintained React page — the current react.dev `Component` page says only "during rendering", so the claim rests on the archived `legacy.reactjs.org` docs | react-best-practices |
+| React 18's archived `Component` page did not return the error-boundary exclusion list, so that rule (the `startTransition` exception, trimmed from SKILL.md 2026-09-28) is confirmed only against the current React 19.2 page | react-best-practices |
+| The original §5's "boundaries also catch lifecycle and constructor errors" (trimmed from SKILL.md 2026-09-28) is stated on no maintained React page — the current react.dev `Component` page says only "during rendering", so the claim rested on the archived `legacy.reactjs.org` docs | react-best-practices |
 | Repo house thresholds with no cited backing: component ≤ 250 lines, body ≤ 120, JSX depth ≤ 4, ≤ 8 props, `useReducer` at 3+ fields | react-best-practices |
 
 ## Maintaining this file

@@ -6,6 +6,9 @@ set -euo pipefail
 
 status=0
 
+# A SKILL.md is loaded into context on every trigger, often beside several others.
+MAX_SKILL_BYTES=24000
+
 # Parse a YAML document on stdin. Prints the parser error and returns non-zero on
 # failure; returns 0 (skipping the check) when no parser is available.
 parse_yaml() {
@@ -85,9 +88,31 @@ for skill_dir in skills/*/; do
     status=1
   fi
 
-  # The pointer left behind when references moved out must actually resolve.
-  if grep -q 'references/sources\.md' "$file" && [[ ! -f "${skill_dir}references/sources.md" ]]; then
-    echo "FAIL: $file links references/sources.md but ${skill_dir}references/sources.md is missing"
+  # Provenance is for humans deciding whether to trust a skill; it must not cost
+  # tokens every time a model loads one (CONTRIBUTING.md, "What belongs in a SKILL.md").
+  if grep -q 'references/sources\.md' "$file"; then
+    echo "FAIL: $file points at references/sources.md; provenance stays out of SKILL.md"
+    status=1
+  fi
+  if grep -Eqi '^#+ *(references|sources|review checklist)[[:space:]]*$' "$file"; then
+    echo "FAIL: $file has a References/Sources/Review Checklist section; see CONTRIBUTING.md"
+    status=1
+  fi
+
+  # Every references/ file the body points to must exist, or the model is sent
+  # to read something that is not there.
+  while IFS= read -r ref; do
+    while [[ "$ref" == *. ]]; do ref="${ref%.}"; done
+    [[ -z "$ref" || "$ref" == */ ]] && continue
+    if [[ ! -e "${skill_dir}${ref}" ]]; then
+      echo "FAIL: $file points to $ref, which does not exist in $skill_dir"
+      status=1
+    fi
+  done < <(grep -oE 'references/[A-Za-z0-9._/-]+' "$file" | sort -u || true)
+
+  bytes=$(wc -c <"$file" | tr -d ' ')
+  if (( bytes > MAX_SKILL_BYTES )); then
+    echo "FAIL: $file is $bytes bytes (budget $MAX_SKILL_BYTES); move occasionally-needed material to references/"
     status=1
   fi
 done
